@@ -1,0 +1,6 @@
+{
+  "name": "JellyTune",
+  "description": "A gorgeous Material-designed Jellyfin music client specialized for high-fidelity audio, featuring offline caching and gapless-style playback.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
