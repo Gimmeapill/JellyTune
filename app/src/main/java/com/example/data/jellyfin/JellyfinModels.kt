@@ -33,7 +33,8 @@ data class JellyfinItem(
     @Json(name = "ArtistItems") val artistItems: List<ArtistItem>? = null,
     @Json(name = "AlbumArtist") val albumArtist: String? = null,
     @Json(name = "RunTimeTicks") val runTimeTicks: Long? = null,
-    @Json(name = "ImageTags") val imageTags: Map<String, String>? = null
+    @Json(name = "ImageTags") val imageTags: Map<String, String>? = null,
+    @Json(name = "UserData") val userData: UserData? = null
 ) {
     val durationMs: Long
         get() = (runTimeTicks ?: 0L) / 10000L // 10,000 ticks per millisecond
@@ -51,4 +52,11 @@ data class ArtistItem(
 @JsonClass(generateAdapter = true)
 data class JellyfinItemsResponse(
     @Json(name = "Items") val items: List<JellyfinItem>
+)
+
+@JsonClass(generateAdapter = true)
+data class UserData(
+    @Json(name = "IsFavorite") val isFavorite: Boolean = false,
+    @Json(name = "PlayCount") val playCount: Int = 0,
+    @Json(name = "LastPlayedDate") val lastPlayedDate: String? = null
 )

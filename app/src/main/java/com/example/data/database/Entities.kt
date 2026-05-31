@@ -22,7 +22,9 @@ data class CachedSong(
     val album: String,
     val durationMs: Long,
     val filePath: String,
-    val cachedAt: Long = System.currentTimeMillis()
+    val cachedAt: Long = System.currentTimeMillis(),
+    val playCount: Int = 0,
+    val lastPlayedAt: Long = 0L
 )
 
 @Entity(tableName = "local_favorites")

@@ -47,6 +47,9 @@ interface LocalFavoriteDao {
     @Query("SELECT * FROM local_favorites ORDER BY addedAt DESC")
     fun getAllFavorites(): Flow<List<LocalFavorite>>
 
+    @Query("SELECT * FROM local_favorites ORDER BY addedAt DESC")
+    suspend fun getAllFavoritesList(): List<LocalFavorite>
+
     @Query("SELECT EXISTS(SELECT 1 FROM local_favorites WHERE songId = :songId)")
     suspend fun isFavorite(songId: String): Boolean
 

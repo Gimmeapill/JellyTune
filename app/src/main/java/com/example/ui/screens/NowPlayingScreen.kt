@@ -1,6 +1,13 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.layout.width
 import androidx.compose.animation.core.RepeatMode as AnimRepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -88,6 +95,8 @@ fun NowPlayingScreen(
     val isCached = cachedSongs.any { it.songId == currentSong.id }
 
     // Floating slowly spinning animation for circular artwork
+    val activeServer by viewModel.activeServer.collectAsState()
+
     val infiniteTransition = rememberInfiniteTransition(label = "ArtRotation")
     val angle by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -116,16 +125,26 @@ fun NowPlayingScreen(
                     )
                 )
         ) {
-            Column(
+            val config = LocalConfiguration.current
+            val screenHeight = config.screenHeightDp.dp
+            
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .navigationBarsPadding(),
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
-                // Top Control Header
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(screenHeight - 80.dp) // Leave a bit for nav and bottom padding
+                            .padding(24.dp),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Top Control Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -141,12 +160,12 @@ fun NowPlayingScreen(
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "NOW STREAMING",
+                            text = "STREAMING FROM SERVER: ${activeServer?.username ?: "Demo"}",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.Bold,
-                                letterSpacing = 2.sp
+                                letterSpacing = 1.sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
                         )
                         Text(
                             text = currentSong.albumName ?: "Single Release",
@@ -396,6 +415,53 @@ fun NowPlayingScreen(
                             tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                             modifier = Modifier.size(26.dp)
                         )
+                    }
+                } // End Core Media Deck Row
+            } // End Column
+        } // End item
+
+                item {
+                    Text(
+                        text = "PLAY QUEUE",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 8.dp)
+                    )
+                }
+                
+                itemsIndexed(playbackState.queue) { index, queueSong ->
+                    val isCurrent = index == playbackState.queueIndex
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.playbackManager.playQueue(playbackState.queue, index) }
+                            .padding(vertical = 12.dp, horizontal = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            tint = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = queueSong.name,
+                                fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.Medium,
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = queueSong.albumArtist ?: queueSong.artists?.firstOrNull() ?: "Unknown Artist",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

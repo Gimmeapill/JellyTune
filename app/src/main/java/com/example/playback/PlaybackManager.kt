@@ -39,6 +39,30 @@ class PlaybackManager(
     private val context: Context,
     private val repository: JellyfinRepository
 ) {
+    companion object {
+        @Volatile
+        private var INSTANCE: PlaybackManager? = null
+
+        fun getInstance(context: Context, repository: JellyfinRepository): PlaybackManager {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: PlaybackManager(context.applicationContext, repository).also { INSTANCE = it }
+            }
+        }
+    }
+
+    private fun ensureServiceStarted() {
+        try {
+            val intent = android.content.Intent(context, PlaybackService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("PlaybackManager", "Failed to start PlaybackService", e)
+        }
+    }
+
     private var mediaPlayer: MediaPlayer? = null
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var progressJob: Job? = null
@@ -78,6 +102,24 @@ class PlaybackManager(
 
     // --- PLAYBACK CONTROLS ---
 
+    fun appendSongsToQueue(songs: List<JellyfinItem>) {
+        if (songs.isEmpty()) return
+        initMediaPlayer()
+        val currentQueue = _state.value.queue.toMutableList()
+        currentQueue.addAll(songs)
+        
+        originalQueue = originalQueue + songs
+        
+        _state.value = _state.value.copy(
+            queue = currentQueue,
+            queueIndex = if (_state.value.queueIndex == -1) 0 else _state.value.queueIndex
+        )
+        // If nothing was playing or loaded, start playing the first appended track automatically
+        if (_state.value.currentSong == null) {
+            loadAndPlay(songs[0])
+        }
+    }
+
     fun playQueue(songs: List<JellyfinItem>, startIndex: Int) {
         if (songs.isEmpty()) return
         initMediaPlayer()
@@ -108,6 +150,13 @@ class PlaybackManager(
             val cachedFile = repository.getCachedLocalFile(song.id)
             val isCached = cachedFile != null
 
+            // Increment play count inside CachedSong if cached
+            if (isCached) {
+                scope.launch(Dispatchers.IO) {
+                    repository.incrementPlayCount(song.id)
+                }
+            }
+
             // High Fidelity audio spec detection
             val mockAudioBadge = if (isCached) {
                 if (song.id.contains("demo")) "Hi-Fi Local FLAC (24-bit)" else "Cached 320kbps MP3"
@@ -122,6 +171,8 @@ class PlaybackManager(
                 positionMs = 0,
                 durationMs = song.durationMs
             )
+
+            ensureServiceStarted()
 
             try {
                 withContext(Dispatchers.IO) {
@@ -159,6 +210,7 @@ class PlaybackManager(
     }
 
     fun togglePlayPause() {
+        ensureServiceStarted()
         val player = mediaPlayer ?: return
         if (player.isPlaying) {
             player.pause()
@@ -304,6 +356,12 @@ class PlaybackManager(
         stopProgressTracker()
         mediaPlayer?.release()
         mediaPlayer = null
+        try {
+            val intent = android.content.Intent(context, PlaybackService::class.java)
+            context.stopService(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("PlaybackManager", "Failed to stop PlaybackService on release", e)
+        }
     }
 }
 

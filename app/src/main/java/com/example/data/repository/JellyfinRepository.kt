@@ -20,12 +20,32 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.squareup.moshi.Types
+
 class JellyfinRepository(private val context: Context) {
+
+    companion object {
+        @Volatile
+        private var INSTANCE: JellyfinRepository? = null
+
+        fun getInstance(context: Context): JellyfinRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: JellyfinRepository(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+    }
 
     private val db = AppDatabase.getDatabase(context)
     private val serverDao = db.serverDao()
     private val cachedSongDao = db.cachedSongDao()
     private val favoriteDao = db.favoriteDao()
+    private val apiCacheDao = db.apiCacheDao()
+
+    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val listType = Types.newParameterizedType(List::class.java, JellyfinItem::class.java)
+    private val listAdapter = moshi.adapter<List<JellyfinItem>>(listType)
 
     private val client = JellyfinClient()
     private val okHttpClient = OkHttpClient()
@@ -105,22 +125,69 @@ class JellyfinRepository(private val context: Context) {
     suspend fun getArtists(): List<JellyfinItem> {
         if (isDemo()) return getDemoArtists()
         val server = _activeServer.value ?: return emptyList()
-        val result = client.fetchItems(server.serverUrl, server.token, server.userId, "MusicArtist")
-        return result.getOrDefault(emptyList())
+        return fetchWithCache(server, "getArtists", null) {
+            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicArtist").getOrDefault(emptyList())
+        }
     }
 
     suspend fun getAlbums(parentId: String? = null): List<JellyfinItem> {
-        if (isDemo()) return getDemoAlbums()
+        if (isDemo()) {
+            val all = getDemoAlbums()
+            if (parentId == null) return all
+            val artistMap = mapOf(
+                "art_1" to "Chillhop Society",
+                "art_2" to "Retro Waves",
+                "art_3" to "Nora Light",
+                "art_4" to "Sierra Echo"
+            )
+            val name = artistMap[parentId] ?: return all
+            return all.filter { it.albumArtist == name }
+        }
         val server = _activeServer.value ?: return emptyList()
-        val result = client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", parentId)
-        return result.getOrDefault(emptyList())
+        return fetchWithCache(server, "getAlbums", parentId) {
+            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", parentId).getOrDefault(emptyList())
+        }
     }
 
     suspend fun getSongs(parentId: String? = null): List<JellyfinItem> {
         if (isDemo()) return getDemoSongs(parentId)
         val server = _activeServer.value ?: return emptyList()
-        val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId)
-        return result.getOrDefault(emptyList())
+        val songs = fetchWithCache(server, "getSongs", parentId) {
+            client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId).getOrDefault(emptyList())
+        }
+        syncSongsFavoriteState(songs)
+        return songs
+    }
+
+    private suspend fun fetchWithCache(
+        server: com.example.data.database.JellyfinServer,
+        operation: String,
+        parentId: String?,
+        fetchLogic: suspend () -> List<JellyfinItem>
+    ): List<JellyfinItem> {
+        val cacheKey = "cached_${operation}_${server.serverUrl}_${server.userId}_${parentId ?: "all"}"
+        val cached = withContext(Dispatchers.IO) { apiCacheDao.getCache(cacheKey) }
+        val cachedList = cached?.dataJson?.let { 
+            try { listAdapter.fromJson(it) } catch (e: Exception) { null } 
+        }
+
+        if (cachedList != null && cachedList.isNotEmpty()) {
+            kotlinx.coroutines.MainScope().launch(Dispatchers.IO) {
+                val freshList = fetchLogic()
+                if (freshList.isNotEmpty()) {
+                    apiCacheDao.insertCache(com.example.data.database.ApiCache(cacheKey, System.currentTimeMillis(), listAdapter.toJson(freshList)))
+                }
+            }
+            return cachedList
+        }
+
+        val freshList = fetchLogic()
+        if (freshList.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                apiCacheDao.insertCache(com.example.data.database.ApiCache(cacheKey, System.currentTimeMillis(), listAdapter.toJson(freshList)))
+            }
+        }
+        return freshList
     }
 
     // --- ARTWORK AND SOURCE ENDPOINTS ---
@@ -147,7 +214,8 @@ class JellyfinRepository(private val context: Context) {
 
     suspend fun toggleFavorite(song: JellyfinItem) = withContext(Dispatchers.IO) {
         val server = _activeServer.value ?: return@withContext
-        if (favoriteDao.isFavorite(song.id)) {
+        val isFav = favoriteDao.isFavorite(song.id)
+        if (isFav) {
             favoriteDao.deleteFavorite(song.id)
         } else {
             val fav = LocalFavorite(
@@ -160,10 +228,16 @@ class JellyfinRepository(private val context: Context) {
             )
             favoriteDao.insertFavorite(fav)
         }
+
+        // Sync favorite with server if we're not in demo mode
+        if (!isDemo()) {
+            client.toggleFavoriteOnServer(server.serverUrl, server.token, server.userId, song.id, !isFav)
+        }
     }
 
     suspend fun toggleFavoriteLocal(song: CachedSong) = withContext(Dispatchers.IO) {
-        if (favoriteDao.isFavorite(song.songId)) {
+        val isFav = favoriteDao.isFavorite(song.songId)
+        if (isFav) {
             favoriteDao.deleteFavorite(song.songId)
         } else {
             val fav = LocalFavorite(
@@ -175,6 +249,53 @@ class JellyfinRepository(private val context: Context) {
                 durationMs = song.durationMs
             )
             favoriteDao.insertFavorite(fav)
+        }
+
+        // Sync favorite with server if we're not in demo mode
+        val server = _activeServer.value
+        if (!isDemo() && server != null && server.serverUrl == song.serverUrl) {
+            client.toggleFavoriteOnServer(server.serverUrl, server.token, server.userId, song.songId, !isFav)
+        }
+    }
+
+    suspend fun syncFavorites() = withContext(Dispatchers.IO) {
+        if (isDemo()) return@withContext
+        val server = _activeServer.value ?: return@withContext
+        val result = client.fetchItems(
+            serverUrl = server.serverUrl,
+            token = server.token,
+            userId = server.userId,
+            itemType = "Audio",
+            parentId = null,
+            filters = "IsFavorite"
+        )
+        if (result.isSuccess) {
+            val serverFavs = result.getOrNull() ?: emptyList()
+            val allLocal = favoriteDao.getAllFavoritesList()
+            val currentLocalIds = allLocal.map { it.songId }.toSet()
+
+            // 1. Sync server-side favorites down to the local database
+            for (song in serverFavs) {
+                if (song.id !in currentLocalIds) {
+                    val fav = LocalFavorite(
+                        songId = song.id,
+                        serverUrl = server.serverUrl,
+                        title = song.name,
+                        artist = song.albumArtist ?: song.artists?.firstOrNull() ?: "Unknown Artist",
+                        album = song.albumName ?: "Unknown Album",
+                        durationMs = song.durationMs
+                    )
+                    favoriteDao.insertFavorite(fav)
+                }
+            }
+
+            // 2. Authoritative Server Sync: Remove local items that are no longer favorites on the server
+            val serverFavIds = serverFavs.map { it.id }.toSet()
+            for (localFav in allLocal) {
+                if (localFav.serverUrl == server.serverUrl && localFav.songId !in serverFavIds) {
+                    favoriteDao.deleteFavorite(localFav.songId)
+                }
+            }
         }
     }
 
@@ -192,6 +313,11 @@ class JellyfinRepository(private val context: Context) {
     suspend fun downloadAndCache(song: JellyfinItem, onProgress: (Float) -> Unit = {}): Boolean = withContext(Dispatchers.IO) {
         val server = _activeServer.value ?: return@withContext false
         if (isCached(song.id)) return@withContext true
+
+        // Enforce the cache size limit before adding a new song
+        val prefs = context.getSharedPreferences("jellytune_prefs", Context.MODE_PRIVATE)
+        val limit = prefs.getInt("max_cache_limit", 50)
+        enforceCacheLimit(limit - 1)
 
         val playUrl = getSongUrl(song.id)
         val cacheDir = File(context.cacheDir, "audio_cache")
@@ -263,6 +389,70 @@ class JellyfinRepository(private val context: Context) {
             if (file.exists()) file.delete()
         }
         cachedSongDao.clearCache()
+    }
+
+    suspend fun getCachedSongsList(): List<CachedSong> = withContext(Dispatchers.IO) {
+        cachedSongDao.getAllCachedSongs()
+    }
+
+    suspend fun incrementPlayCount(songId: String) = withContext(Dispatchers.IO) {
+        val record = cachedSongDao.getCachedSongById(songId)
+        if (record != null) {
+            val updated = record.copy(
+                playCount = record.playCount + 1,
+                lastPlayedAt = System.currentTimeMillis()
+            )
+            cachedSongDao.insertCachedSong(updated)
+        }
+    }
+
+    suspend fun enforceCacheLimit(maxTracks: Int) = withContext(Dispatchers.IO) {
+        if (maxTracks == Int.MAX_VALUE || maxTracks <= 0) return@withContext
+
+        val currentCached = cachedSongDao.getAllCachedSongs()
+        if (currentCached.size > maxTracks) {
+            val sorted = currentCached.sortedWith(
+                compareBy<CachedSong> { it.playCount }
+                    .thenBy { it.lastPlayedAt }
+                    .thenBy { it.cachedAt }
+            )
+            val numToEvict = currentCached.size - maxTracks
+            for (i in 0 until numToEvict.coerceAtMost(sorted.size)) {
+                val songToEvict = sorted[i]
+                val file = File(songToEvict.filePath)
+                if (file.exists()) file.delete()
+                cachedSongDao.deleteCachedSong(songToEvict.songId)
+            }
+        }
+    }
+
+    suspend fun syncSongsFavoriteState(songs: List<JellyfinItem>) = withContext(Dispatchers.IO) {
+        if (isDemo()) return@withContext
+        val server = _activeServer.value ?: return@withContext
+        val currentLocalFavs = favoriteDao.getAllFavoritesList()
+        val currentLocalIds = currentLocalFavs.map { it.songId }.toSet()
+
+        for (song in songs) {
+            val isServerFav = song.userData?.isFavorite == true
+            val isLocalFav = song.id in currentLocalIds
+
+            if (isServerFav && !isLocalFav) {
+                val fav = LocalFavorite(
+                    songId = song.id,
+                    serverUrl = server.serverUrl,
+                    title = song.name,
+                    artist = song.albumArtist ?: song.artists?.firstOrNull() ?: "Unknown Artist",
+                    album = song.albumName ?: "Unknown Album",
+                    durationMs = song.durationMs
+                )
+                favoriteDao.insertFavorite(fav)
+            } else if (!isServerFav && isLocalFav) {
+                val localFavObj = currentLocalFavs.find { it.songId == song.id }
+                if (localFavObj != null && localFavObj.serverUrl == server.serverUrl) {
+                    favoriteDao.deleteFavorite(song.id)
+                }
+            }
+        }
     }
 
     // --- DEMO LIBRARIES AND HELPER IMPLEMENTATIONS ---

@@ -81,13 +81,17 @@ class JellyfinClient {
         token: String,
         userId: String,
         itemType: String, // "MusicAlbum", "MusicArtist", "Audio"
-        parentId: String? = null
+        parentId: String? = null,
+        filters: String? = null
     ): Result<List<JellyfinItem>> = withContext(Dispatchers.IO) {
         val sanitizedUrl = sanitizeUrl(serverUrl)
 
-        var queryUrl = "$sanitizedUrl/Users/$userId/Items?IncludeItemTypes=$itemType&Recursive=true&fields=PrimaryImageAspectRatio"
+        var queryUrl = "$sanitizedUrl/Users/$userId/Items?IncludeItemTypes=$itemType&Recursive=true&fields=PrimaryImageAspectRatio,UserData"
         if (parentId != null) {
             queryUrl += "&ParentId=$parentId"
+        }
+        if (filters != null) {
+            queryUrl += "&Filters=$filters"
         }
         
         // Add sorting
@@ -102,6 +106,8 @@ class JellyfinClient {
             .url(queryUrl)
             .get()
             .addHeader("X-MediaBrowser-Token", token)
+            .addHeader("X-Emby-Token", token)
+            .addHeader("Authorization", "MediaBrowser Token=\"$token\"")
             .addHeader("Accept", "application/json")
             .build()
 
@@ -131,6 +137,37 @@ class JellyfinClient {
     fun getArtworkUrl(serverUrl: String, itemId: String, token: String): String {
         val sanitizedUrl = sanitizeUrl(serverUrl)
         return "$sanitizedUrl/Items/$itemId/Images/Primary?api_key=$token"
+    }
+
+    suspend fun toggleFavoriteOnServer(
+        serverUrl: String,
+        token: String,
+        userId: String,
+        itemId: String,
+        isFavorite: Boolean
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val sanitizedUrl = sanitizeUrl(serverUrl)
+        val url = "$sanitizedUrl/Users/$userId/FavoriteItems/$itemId"
+        val body = if (isFavorite) "".toRequestBody(null) else null
+        val request = Request.Builder()
+            .url(url)
+            .method(if (isFavorite) "POST" else "DELETE", body)
+            .addHeader("X-MediaBrowser-Token", token)
+            .addHeader("X-Emby-Token", token)
+            .addHeader("Authorization", "MediaBrowser Token=\"$token\"")
+            .addHeader("Accept", "application/json")
+            .build()
+        try {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IOException("Server error toggleFavoriteOnServer: ${response.code}"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     private fun sanitizeUrl(url: String): String {

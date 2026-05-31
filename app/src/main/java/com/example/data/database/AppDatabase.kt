@@ -9,15 +9,17 @@ import androidx.room.RoomDatabase
     entities = [
         JellyfinServer::class,
         CachedSong::class,
-        LocalFavorite::class
+        LocalFavorite::class,
+        ApiCache::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun serverDao(): JellyfinServerDao
     abstract fun cachedSongDao(): CachedSongDao
     abstract fun favoriteDao(): LocalFavoriteDao
+    abstract fun apiCacheDao(): ApiCacheDao
 
     companion object {
         @Volatile

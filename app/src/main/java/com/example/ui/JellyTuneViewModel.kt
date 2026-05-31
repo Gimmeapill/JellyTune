@@ -20,8 +20,8 @@ import kotlinx.coroutines.launch
 
 class JellyTuneViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = JellyfinRepository(application)
-    val playbackManager = PlaybackManager(application, repository)
+    private val repository = JellyfinRepository.getInstance(application)
+    val playbackManager = PlaybackManager.getInstance(application, repository)
 
     // Exposing session and db state
     val activeServer = repository.activeServer
@@ -45,6 +45,68 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _songs = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val songs = _songs.asStateFlow()
 
+    // Saved preferences configurations
+    private val prefs = application.getSharedPreferences("jellytune_prefs", android.content.Context.MODE_PRIVATE)
+
+    private val _offlineMode = MutableStateFlow(prefs.getBoolean("offline_mode", false))
+    val offlineMode = _offlineMode.asStateFlow()
+
+    private val _maxCacheLimit = MutableStateFlow(prefs.getInt("max_cache_limit", 50))
+    val maxCacheLimit = _maxCacheLimit.asStateFlow()
+
+    fun setOfflineMode(enabled: Boolean) {
+        _offlineMode.value = enabled
+        prefs.edit().putBoolean("offline_mode", enabled).apply()
+    }
+
+    fun setMaxCacheLimit(limit: Int) {
+        _maxCacheLimit.value = limit
+        prefs.edit().putInt("max_cache_limit", limit).apply()
+        viewModelScope.launch {
+            repository.enforceCacheLimit(limit)
+        }
+    }
+
+    // Expose filtered view based on offline/cached state
+    val displaySongs: StateFlow<List<JellyfinItem>> = combine(_songs, cachedSongs, _offlineMode) { serverSongs, cached, offline ->
+        if (offline) {
+            cached.map { it.toJellyfinItem() }
+        } else {
+            serverSongs
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val displayAlbums: StateFlow<List<JellyfinItem>> = combine(_albums, cachedSongs, _offlineMode) { serverAlbums, cached, offline ->
+        if (offline) {
+            cached.map { it.album }.distinct().map { albumName ->
+                serverAlbums.find { it.name.equals(albumName, ignoreCase = true) }
+                    ?: JellyfinItem(
+                        id = cached.firstOrNull { it.album.equals(albumName, ignoreCase = true) }?.songId ?: "cached_alb",
+                        name = albumName,
+                        type = "MusicAlbum",
+                        albumArtist = cached.firstOrNull { it.album.equals(albumName, ignoreCase = true) }?.artist ?: "Unknown Artist"
+                    )
+            }
+        } else {
+            serverAlbums
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val displayArtists: StateFlow<List<JellyfinItem>> = combine(_artists, cachedSongs, _offlineMode) { serverArtists, cached, offline ->
+        if (offline) {
+            cached.map { it.artist }.distinct().map { artistName ->
+                serverArtists.find { it.name.equals(artistName, ignoreCase = true) }
+                    ?: JellyfinItem(
+                        id = cached.firstOrNull { it.artist.equals(artistName, ignoreCase = true) }?.songId ?: "cached_art",
+                        name = artistName,
+                        type = "MusicArtist"
+                    )
+            }
+        } else {
+            serverArtists
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // Screen navigation filter states
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
@@ -62,20 +124,34 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _artistSongs = MutableStateFlow<List<JellyfinItem>>(emptyList())
     val artistSongs = _artistSongs.asStateFlow()
 
+    private val _artistAlbums = MutableStateFlow<List<JellyfinItem>>(emptyList())
+    val artistAlbums = _artistAlbums.asStateFlow()
+
+    private val _showHeroCard = MutableStateFlow(false)
+    val showHeroCard = _showHeroCard.asStateFlow()
+
+    fun setHeroCardVisibility(visible: Boolean) {
+        _showHeroCard.value = visible
+    }
+
     // Download state track percentage map
     private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
     val downloadProgress = _downloadProgress.asStateFlow()
 
     // Combines search query and libraries
-    val filteredAlbums: StateFlow<List<JellyfinItem>> = combine(albums, _searchQuery) { list, query ->
+    val filteredAlbums: StateFlow<List<JellyfinItem>> = combine(displayAlbums, _searchQuery) { list, query ->
+        if (query.isBlank()) list else list.filter {
+            it.name.contains(query, ignoreCase = true) ||
+            (it.albumArtist ?: "").contains(query, ignoreCase = true) ||
+            it.artists?.any { artist -> artist.contains(query, ignoreCase = true) } == true
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val filteredArtists: StateFlow<List<JellyfinItem>> = combine(displayArtists, _searchQuery) { list, query ->
         if (query.isBlank()) list else list.filter { it.name.contains(query, ignoreCase = true) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val filteredArtists: StateFlow<List<JellyfinItem>> = combine(artists, _searchQuery) { list, query ->
-        if (query.isBlank()) list else list.filter { it.name.contains(query, ignoreCase = true) }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val filteredSongs: StateFlow<List<JellyfinItem>> = combine(songs, _searchQuery) { list, query ->
+    val filteredSongs: StateFlow<List<JellyfinItem>> = combine(displaySongs, _searchQuery) { list, query ->
         if (query.isBlank()) list else list.filter {
             it.name.contains(query, ignoreCase = true) || 
             (it.albumName ?: "").contains(query, ignoreCase = true) ||
@@ -134,14 +210,16 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // Fetch artists, albums, songs in parallel
+                // Fetch artists, albums, songs, and sync favorites in parallel
                 val artistsJob = launch { _artists.value = repository.getArtists() }
                 val albumsJob = launch { _albums.value = repository.getAlbums() }
                 val songsJob = launch { _songs.value = repository.getSongs() }
+                val syncFavsJob = launch { repository.syncFavorites() }
 
                 artistsJob.join()
                 albumsJob.join()
                 songsJob.join()
+                syncFavsJob.join()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -161,9 +239,16 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         viewModelScope.launch {
-            _isLoading.value = true
-            _albumSongs.value = repository.getSongs(album.id)
-            _isLoading.value = false
+            if (_offlineMode.value) {
+                val cached = repository.getCachedSongsList()
+                _albumSongs.value = cached
+                    .filter { it.album.equals(album.name, ignoreCase = true) }
+                    .map { it.toJellyfinItem() }
+            } else {
+                _isLoading.value = true
+                _albumSongs.value = repository.getSongs(album.id)
+                _isLoading.value = false
+            }
         }
     }
 
@@ -171,12 +256,43 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedArtist.value = artist
         if (artist == null) {
             _artistSongs.value = emptyList()
+            _artistAlbums.value = emptyList()
             return
         }
         viewModelScope.launch {
-            _isLoading.value = true
-            _artistSongs.value = repository.getSongs(artist.id)
-            _isLoading.value = false
+            if (_offlineMode.value) {
+                val cached = repository.getCachedSongsList()
+                val artistSongs = cached
+                    .filter { it.artist.equals(artist.name, ignoreCase = true) }
+                    .map { it.toJellyfinItem() }
+                _artistSongs.value = artistSongs
+
+                val artistAlbums = cached
+                    .filter { it.artist.equals(artist.name, ignoreCase = true) }
+                    .map { it.album }
+                    .distinct()
+                    .map { albumName ->
+                        JellyfinItem(
+                            id = cached.firstOrNull { it.album.equals(albumName, ignoreCase = true) }?.songId ?: "cached_alb",
+                            name = albumName,
+                            type = "MusicAlbum",
+                            albumArtist = artist.name
+                        )
+                    }
+                _artistAlbums.value = artistAlbums
+            } else {
+                _isLoading.value = true
+                try {
+                    val albumsJob = launch { _artistAlbums.value = repository.getAlbums(artist.id) }
+                    val songsJob = launch { _artistSongs.value = repository.getSongs(artist.id) }
+                    albumsJob.join()
+                    songsJob.join()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    _isLoading.value = false
+                }
+            }
         }
     }
 
@@ -187,6 +303,39 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // --- PLAY CONTROLS INTERFACES ---
+
+    fun playAlbumNow(album: JellyfinItem) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            val albumSongs = repository.getSongs(album.id)
+            _isLoading.value = false
+            if (albumSongs.isNotEmpty()) {
+                playbackManager.playQueue(albumSongs, 0)
+            }
+        }
+    }
+
+    fun appendAlbumToQueue(album: JellyfinItem) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            val albumSongs = repository.getSongs(album.id)
+            _isLoading.value = false
+            if (albumSongs.isNotEmpty()) {
+                playbackManager.appendSongsToQueue(albumSongs)
+            }
+        }
+    }
+
+    fun downloadAlbumOffline(album: JellyfinItem) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            val albumSongs = repository.getSongs(album.id)
+            _isLoading.value = false
+            for (song in albumSongs) {
+                downloadAndCacheTrack(song)
+            }
+        }
+    }
 
     fun playTrackInQueue(songsList: List<JellyfinItem>, index: Int) {
         playbackManager.playQueue(songsList, index)

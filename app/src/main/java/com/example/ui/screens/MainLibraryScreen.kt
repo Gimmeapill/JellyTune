@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -50,11 +52,14 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Queue
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -378,6 +383,23 @@ fun ExploreHeroCard(viewModel: JellyTuneViewModel) {
                 }
             }
         }
+
+        // Close / Dismiss button aligned to TopEnd of the Box container
+        IconButton(
+            onClick = { viewModel.setHeroCardVisibility(false) },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(12.dp)
+                .size(32.dp)
+                .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Hide Featured",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+        }
     }
 }
 
@@ -388,35 +410,53 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
     var subTab by remember { mutableIntStateOf(0) }
     val isLoading by viewModel.isLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val showHeroCard by viewModel.showHeroCard.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        if (searchQuery.isEmpty()) {
+        if (searchQuery.isEmpty() && showHeroCard) {
             ExploreHeroCard(viewModel = viewModel)
         }
 
-        TabRow(
-            selectedTabIndex = subTab,
-            containerColor = MaterialTheme.colorScheme.background,
-            contentColor = MaterialTheme.colorScheme.onBackground,
-            indicator = { tabPositions ->
-                TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[subTab]),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            val subTabs = listOf("Albums", "Artists", "Tracks")
-            subTabs.forEachIndexed { idx, label ->
-                Tab(
-                    selected = subTab == idx,
-                    onClick = { subTab = idx },
-                    text = {
-                        Text(
-                            label,
-                            fontWeight = if (subTab == idx) FontWeight.Bold else FontWeight.Medium,
-                            color = if (subTab == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
+            TabRow(
+                modifier = Modifier.weight(1f),
+                selectedTabIndex = subTab,
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onBackground,
+                indicator = { tabPositions ->
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[subTab]),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            ) {
+                val subTabs = listOf("Albums", "Artists", "Tracks")
+                subTabs.forEachIndexed { idx, label ->
+                    Tab(
+                        selected = subTab == idx,
+                        onClick = { subTab = idx },
+                        text = {
+                            Text(
+                                label,
+                                fontWeight = if (subTab == idx) FontWeight.Bold else FontWeight.Medium,
+                                color = if (subTab == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                            )
+                        }
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = { viewModel.setHeroCardVisibility(!showHeroCard) },
+                modifier = Modifier.padding(end = 8.dp)
+            ) {
+                Icon(
+                    imageVector = if (showHeroCard) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (showHeroCard) "Hide Hero" else "Show Hero",
+                    tint = if (showHeroCard) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                 )
             }
         }
@@ -438,10 +478,21 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
 @Composable
 fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
     val albums by viewModel.filteredAlbums.collectAsState()
+    var activeActionAlbum by remember { mutableStateOf<JellyfinItem?>(null) }
 
     if (albums.isEmpty()) {
         EmptyStateBlock("No albums found. Refresh or adjust search.")
         return
+    }
+
+    if (activeActionAlbum != null) {
+        AlbumActionDialog(
+            album = activeActionAlbum!!,
+            onDismiss = { activeActionAlbum = null },
+            onPlay = { viewModel.playAlbumNow(activeActionAlbum!!) },
+            onAddToQueue = { viewModel.appendAlbumToQueue(activeActionAlbum!!) },
+            onDownload = { viewModel.downloadAlbumOffline(activeActionAlbum!!) }
+        )
     }
 
     LazyVerticalGrid(
@@ -455,10 +506,119 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
             AlbumCard(
                 album = album,
                 artworkUrl = viewModel.getArtworkUrl(album.id),
-                onClick = { viewModel.selectAlbum(album) }
+                onClick = { viewModel.selectAlbum(album) },
+                onLongClick = { activeActionAlbum = album }
             )
         }
     }
+}
+
+@Composable
+fun AlbumActionDialog(
+    album: JellyfinItem,
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onDownload: () -> Unit
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("Cancel", color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        title = {
+            Text(
+                text = album.name,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onPlay()
+                            onDismiss()
+                        }
+                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play Now",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Play Now",
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onAddToQueue()
+                            onDismiss()
+                        }
+                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Queue,
+                        contentDescription = "Add to Play Queue",
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Add to play queue",
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onDownload()
+                            onDismiss()
+                        }
+                        .padding(vertical = 12.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Add to Local Cache Only",
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Add to local cache only",
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        },
+        shape = RoundedCornerShape(24.dp),
+        containerColor = MaterialTheme.colorScheme.surface
+    )
 }
 
 @Composable
@@ -534,16 +694,21 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
 
 // --- SUB TABS COMPOSABLES FOR INDIVIDUAL TILES ---
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AlbumCard(
     album: JellyfinItem,
     artworkUrl: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
     ) {
@@ -853,6 +1018,7 @@ fun AlbumDetailsScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ArtistDetailsScreen(
     artist: JellyfinItem,
@@ -861,9 +1027,22 @@ fun ArtistDetailsScreen(
 ) {
     val artworkUrl = viewModel.getArtworkUrl(artist.id)
     val artistSongs by viewModel.artistSongs.collectAsState()
+    val artistAlbums by viewModel.artistAlbums.collectAsState()
     val currentSong = viewModel.playbackState.collectAsState().value.currentSong
     val cachedSongs by viewModel.cachedSongs.collectAsState(initial = emptyList())
     val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
+
+    var activeActionAlbum by remember { mutableStateOf<JellyfinItem?>(null) }
+
+    if (activeActionAlbum != null) {
+        AlbumActionDialog(
+            album = activeActionAlbum!!,
+            onDismiss = { activeActionAlbum = null },
+            onPlay = { viewModel.playAlbumNow(activeActionAlbum!!) },
+            onAddToQueue = { viewModel.appendAlbumToQueue(activeActionAlbum!!) },
+            onDownload = { viewModel.downloadAlbumOffline(activeActionAlbum!!) }
+        )
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -919,10 +1098,10 @@ fun ArtistDetailsScreen(
                         fontWeight = FontWeight.ExtraBold,
                     )
                     Text(
-                        text = "${artistSongs.size} Songs available on server",
+                        text = "${artistAlbums.size} Albums • ${artistSongs.size} Songs available",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.secondary,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
@@ -934,29 +1113,104 @@ fun ArtistDetailsScreen(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
             ) {
-                itemsIndexed(artistSongs) { idx, song ->
-                    val isCurrent = song.id == currentSong?.id
-                    val isCached = cachedSongs.any { it.songId == song.id }
-                    val isFav = localFavs.any { it.songId == song.id }
+                // Feature 2: Display artist's albums vertically as a proper list
+                if (artistAlbums.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Albums",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                    items(artistAlbums) { album ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = { viewModel.selectAlbum(album) },
+                                    onLongClick = { activeActionAlbum = album }
+                                )
+                                .padding(vertical = 8.dp, horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(viewModel.getArtworkUrl(album.id))
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = album.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
 
-                    SongItemRow(
-                        index = idx + 1,
-                        song = song,
-                        artworkUrl = viewModel.getArtworkUrl(song.id),
-                        isCurrent = isCurrent,
-                        isCached = isCached,
-                        isFav = isFav,
-                        dlProgress = null,
-                        onPlay = { viewModel.playTrackInQueue(artistSongs, idx) },
-                        onFavToggle = { viewModel.toggleFavorite(song) },
-                        onCacheClick = {
-                            if (isCached) {
-                                viewModel.deleteSongFromCache(song.id)
-                            } else {
-                                viewModel.downloadAndCacheTrack(song)
+                            Spacer(modifier = Modifier.width(16.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = album.name,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = album.albumArtist ?: "Various Artists",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
-                    )
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+
+                // Header for songs section
+                if (artistSongs.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Songs",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                    itemsIndexed(artistSongs) { idx, song ->
+                        val isCurrent = song.id == currentSong?.id
+                        val isCached = cachedSongs.any { it.songId == song.id }
+                        val isFav = localFavs.any { it.songId == song.id }
+
+                        SongItemRow(
+                            index = idx + 1,
+                            song = song,
+                            artworkUrl = viewModel.getArtworkUrl(song.id),
+                            isCurrent = isCurrent,
+                            isCached = isCached,
+                            isFav = isFav,
+                            dlProgress = null,
+                            onPlay = { viewModel.playTrackInQueue(artistSongs, idx) },
+                            onFavToggle = { viewModel.toggleFavorite(song) },
+                            onCacheClick = {
+                                if (isCached) {
+                                    viewModel.deleteSongFromCache(song.id)
+                                } else {
+                                    viewModel.downloadAndCacheTrack(song)
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -1184,6 +1438,7 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
+                // Wipe Storage Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1207,6 +1462,72 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                         border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
                     ) {
                         Text("Wipe Storage", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Offline Mode switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Offline Mode Only",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Only display and play tracks stored in your local storage cache.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    val isOffline by viewModel.offlineMode.collectAsState()
+                    androidx.compose.material3.Switch(
+                        checked = isOffline,
+                        onCheckedChange = { viewModel.setOfflineMode(it) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Max Cache size choice chips
+                Text(
+                    text = "Max Cache Limit",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Less-played songs are automatically pruned once this limit is reached.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val maxLimit by viewModel.maxCacheLimit.collectAsState()
+                val limits = listOf(5, 10, 25, 50, 100, Int.MAX_VALUE)
+
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(limits) { limit ->
+                        val isSelected = maxLimit == limit
+                        val label = if (limit == Int.MAX_VALUE) "Unlimited" else "$limit Tracks"
+
+                        androidx.compose.material3.FilterChip(
+                            selected = isSelected,
+                            onClick = { viewModel.setMaxCacheLimit(limit) },
+                            label = { Text(label, style = MaterialTheme.typography.labelMedium) }
+                        )
                     }
                 }
             }
