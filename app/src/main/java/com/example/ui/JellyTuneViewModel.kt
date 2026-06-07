@@ -206,14 +206,14 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- LIBRARY FETCH ---
 
-    fun loadLibrary() {
+    fun loadLibrary(forceFull: Boolean = false) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 // Fetch artists, albums, songs, and sync favorites in parallel
-                val artistsJob = launch { _artists.value = repository.getArtists() }
-                val albumsJob = launch { _albums.value = repository.getAlbums() }
-                val songsJob = launch { _songs.value = repository.getSongs() }
+                val artistsJob = launch { _artists.value = repository.getArtists(forceFull) }
+                val albumsJob = launch { _albums.value = repository.getAlbums(forceFull = forceFull) }
+                val songsJob = launch { _songs.value = repository.getSongs(forceFull = forceFull) }
                 val syncFavsJob = launch { repository.syncFavorites() }
 
                 artistsJob.join()
@@ -229,7 +229,7 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun refreshLibrary() {
-        loadLibrary()
+        loadLibrary(forceFull = true)
     }
 
     fun selectAlbum(album: JellyfinItem?) {

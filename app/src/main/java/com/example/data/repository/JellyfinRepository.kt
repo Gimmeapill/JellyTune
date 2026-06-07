@@ -122,15 +122,21 @@ class JellyfinRepository(private val context: Context) {
     }
 
     // --- FETCH METHODS ---
-    suspend fun getArtists(): List<JellyfinItem> {
+    private fun formatIso8601(timestamp: Long): String {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return sdf.format(java.util.Date(timestamp))
+    }
+
+    suspend fun getArtists(forceFull: Boolean = false): List<JellyfinItem> {
         if (isDemo()) return getDemoArtists()
         val server = _activeServer.value ?: return emptyList()
-        return fetchWithCache(server, "getArtists", null) {
-            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicArtist").getOrDefault(emptyList())
+        return fetchWithCache(server, "getArtists", null, forceFull) { minDate ->
+            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicArtist", minDateLastSaved = minDate).getOrDefault(emptyList())
         }
     }
 
-    suspend fun getAlbums(parentId: String? = null): List<JellyfinItem> {
+    suspend fun getAlbums(parentId: String? = null, forceFull: Boolean = false): List<JellyfinItem> {
         if (isDemo()) {
             val all = getDemoAlbums()
             if (parentId == null) return all
@@ -144,16 +150,16 @@ class JellyfinRepository(private val context: Context) {
             return all.filter { it.albumArtist == name }
         }
         val server = _activeServer.value ?: return emptyList()
-        return fetchWithCache(server, "getAlbums", parentId) {
-            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", parentId).getOrDefault(emptyList())
+        return fetchWithCache(server, "getAlbums", parentId, forceFull) { minDate ->
+            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", parentId, minDateLastSaved = minDate).getOrDefault(emptyList())
         }
     }
 
-    suspend fun getSongs(parentId: String? = null): List<JellyfinItem> {
+    suspend fun getSongs(parentId: String? = null, forceFull: Boolean = false): List<JellyfinItem> {
         if (isDemo()) return getDemoSongs(parentId)
         val server = _activeServer.value ?: return emptyList()
-        val songs = fetchWithCache(server, "getSongs", parentId) {
-            client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId).getOrDefault(emptyList())
+        val songs = fetchWithCache(server, "getSongs", parentId, forceFull) { minDate ->
+            client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId, minDateLastSaved = minDate).getOrDefault(emptyList())
         }
         syncSongsFavoriteState(songs)
         return songs
@@ -163,25 +169,53 @@ class JellyfinRepository(private val context: Context) {
         server: com.example.data.database.JellyfinServer,
         operation: String,
         parentId: String?,
-        fetchLogic: suspend () -> List<JellyfinItem>
+        forceFull: Boolean = false,
+        fetchLogic: suspend (String?) -> List<JellyfinItem>
     ): List<JellyfinItem> {
         val cacheKey = "cached_${operation}_${server.serverUrl}_${server.userId}_${parentId ?: "all"}"
+        
+        if (forceFull) {
+            val freshList = fetchLogic(null)
+            if (freshList.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    apiCacheDao.insertCache(com.example.data.database.ApiCache(cacheKey, System.currentTimeMillis(), listAdapter.toJson(freshList)))
+                }
+            }
+            return freshList
+        }
+
         val cached = withContext(Dispatchers.IO) { apiCacheDao.getCache(cacheKey) }
         val cachedList = cached?.dataJson?.let { 
             try { listAdapter.fromJson(it) } catch (e: Exception) { null } 
         }
 
         if (cachedList != null && cachedList.isNotEmpty()) {
+            val lastSyncTime = cached.timestamp
+            // Launch non-blocking background task to get updates (delta elements modified since lastSyncTime)
             kotlinx.coroutines.MainScope().launch(Dispatchers.IO) {
-                val freshList = fetchLogic()
-                if (freshList.isNotEmpty()) {
-                    apiCacheDao.insertCache(com.example.data.database.ApiCache(cacheKey, System.currentTimeMillis(), listAdapter.toJson(freshList)))
+                try {
+                    val isoString = formatIso8601(lastSyncTime)
+                    val deltaList = fetchLogic(isoString)
+                    if (deltaList.isNotEmpty()) {
+                        val mergedMap = cachedList.associateBy { it.id }.toMutableMap()
+                        for (item in deltaList) {
+                            mergedMap[item.id] = item
+                        }
+                        val mergedList = mergedMap.values.toList()
+                        apiCacheDao.insertCache(com.example.data.database.ApiCache(
+                            cacheKey, 
+                            System.currentTimeMillis(), 
+                            listAdapter.toJson(mergedList)
+                        ))
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
             return cachedList
         }
 
-        val freshList = fetchLogic()
+        val freshList = fetchLogic(null)
         if (freshList.isNotEmpty()) {
             withContext(Dispatchers.IO) {
                 apiCacheDao.insertCache(com.example.data.database.ApiCache(cacheKey, System.currentTimeMillis(), listAdapter.toJson(freshList)))

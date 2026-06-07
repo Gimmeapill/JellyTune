@@ -82,16 +82,20 @@ class JellyfinClient {
         userId: String,
         itemType: String, // "MusicAlbum", "MusicArtist", "Audio"
         parentId: String? = null,
-        filters: String? = null
+        filters: String? = null,
+        minDateLastSaved: String? = null
     ): Result<List<JellyfinItem>> = withContext(Dispatchers.IO) {
         val sanitizedUrl = sanitizeUrl(serverUrl)
 
-        var queryUrl = "$sanitizedUrl/Users/$userId/Items?IncludeItemTypes=$itemType&Recursive=true&fields=PrimaryImageAspectRatio,UserData"
+        var queryUrl = "$sanitizedUrl/Users/$userId/Items?IncludeItemTypes=$itemType&Recursive=true&Fields=PrimaryImageAspectRatio,UserData"
         if (parentId != null) {
             queryUrl += "&ParentId=$parentId"
         }
         if (filters != null) {
             queryUrl += "&Filters=$filters"
+        }
+        if (minDateLastSaved != null) {
+            queryUrl += "&MinDateLastSaved=$minDateLastSaved"
         }
         
         // Add sorting

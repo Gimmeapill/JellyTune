@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -126,6 +127,21 @@ fun MainLibraryScreen(
 
     val selectedAlbum by viewModel.selectedAlbum.collectAsState()
     val selectedArtist by viewModel.selectedArtist.collectAsState()
+
+    // Handle android system back gesture inside sub-screens and secondary tabs to prevent premature app exit
+    if (selectedAlbum != null) {
+        BackHandler {
+            viewModel.selectAlbum(null)
+        }
+    } else if (selectedArtist != null) {
+        BackHandler {
+            viewModel.selectArtist(null)
+        }
+    } else if (activeTab != 0) {
+        BackHandler {
+            activeTab = 0
+        }
+    }
 
     // Safety check: force reload on start
     LaunchedEffect(Unit) {
