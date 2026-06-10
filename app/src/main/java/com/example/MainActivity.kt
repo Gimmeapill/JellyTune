@@ -41,6 +41,11 @@ class MainActivity : ComponentActivity() {
                         onExpandPlayer = { isPlayerExpanded = true }
                     )
 
+                    // Provide back handling to minimize the player instead of exiting
+                    androidx.activity.compose.BackHandler(enabled = isPlayerExpanded) {
+                        isPlayerExpanded = false
+                    }
+
                     // Phonograph style Slide-up full screen media player
                     AnimatedVisibility(
                         visible = isPlayerExpanded,

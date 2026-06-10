@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -228,21 +230,6 @@ fun MainLibraryScreen(
                 }
             }
 
-            // Slide-over Screen for Album Info Details
-            AnimatedVisibility(
-                visible = selectedAlbum != null,
-                enter = slideInVertically(initialOffsetY = { it }),
-                exit = slideOutVertically(targetOffsetY = { it })
-            ) {
-                selectedAlbum?.let { album ->
-                    AlbumDetailsScreen(
-                        album = album,
-                        viewModel = viewModel,
-                        onBack = { viewModel.selectAlbum(null) }
-                    )
-                }
-            }
-
             // Slide-over Screen for Artist Info Details
             AnimatedVisibility(
                 visible = selectedArtist != null,
@@ -254,6 +241,21 @@ fun MainLibraryScreen(
                         artist = artist,
                         viewModel = viewModel,
                         onBack = { viewModel.selectArtist(null) }
+                    )
+                }
+            }
+
+            // Slide-over Screen for Album Info Details
+            AnimatedVisibility(
+                visible = selectedAlbum != null,
+                enter = slideInVertically(initialOffsetY = { it }),
+                exit = slideOutVertically(targetOffsetY = { it })
+            ) {
+                selectedAlbum?.let { album ->
+                    AlbumDetailsScreen(
+                        album = album,
+                        viewModel = viewModel,
+                        onBack = { viewModel.selectAlbum(null) }
                     )
                 }
             }
@@ -449,7 +451,7 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
                     )
                 }
             ) {
-                val subTabs = listOf("Albums", "Artists", "Tracks")
+                val subTabs = listOf("Artists", "Albums", "Tracks")
                 subTabs.forEachIndexed { idx, label ->
                     Tab(
                         selected = subTab == idx,
@@ -477,15 +479,18 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
             }
         }
 
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            }
-        } else {
+        Box(modifier = Modifier.fillMaxSize()) {
             when (subTab) {
-                0 -> ExploreAlbumsGrid(viewModel)
-                1 -> ExploreArtistsGrid(viewModel)
+                0 -> ExploreArtistsGrid(viewModel)
+                1 -> ExploreAlbumsGrid(viewModel)
                 2 -> ExploreSongsList(viewModel)
+            }
+            if (isLoading) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant
+                )
             }
         }
     }
@@ -1394,6 +1399,7 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -1514,40 +1520,48 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                 androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Max Cache size choice chips
+                val maxLimitMb by viewModel.maxCacheSizeMb.collectAsState()
+                val currentSizeMb by viewModel.currentCacheSizeMb.collectAsState()
+                val limits = listOf(250L, 500L, 1024L, 2048L, 5120L, Long.MAX_VALUE)
+
                 Text(
-                    text = "Max Cache Limit",
+                    text = "Max Cache Limit • Used: ${String.format("%.2f", currentSizeMb)} MB",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Less-played songs are automatically pruned once this limit is reached.",
+                    text = "Less-played songs are automatically pruned once this size limit is reached.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                val maxLimit by viewModel.maxCacheLimit.collectAsState()
-                val limits = listOf(5, 10, 25, 50, 100, Int.MAX_VALUE)
-
                 androidx.compose.foundation.lazy.LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     items(limits) { limit ->
-                        val isSelected = maxLimit == limit
-                        val label = if (limit == Int.MAX_VALUE) "Unlimited" else "$limit Tracks"
+                        val isSelected = maxLimitMb == limit
+                        val label = when (limit) {
+                            Long.MAX_VALUE -> "Unlimited"
+                            250L, 500L -> "$limit MB"
+                            1024L -> "1 GB"
+                            2048L -> "2 GB"
+                            5120L -> "5 GB"
+                            else -> "${limit / 1024} GB"
+                        }
 
                         androidx.compose.material3.FilterChip(
                             selected = isSelected,
-                            onClick = { viewModel.setMaxCacheLimit(limit) },
+                            onClick = { viewModel.setMaxCacheSizeMb(limit) },
                             label = { Text(label, style = MaterialTheme.typography.labelMedium) }
                         )
                     }
                 }
             }
         }
+        Spacer(modifier = Modifier.height(180.dp))
     }
 }
 

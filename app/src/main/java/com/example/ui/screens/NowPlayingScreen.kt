@@ -72,6 +72,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.BackHandler
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.playback.RepeatMode
@@ -84,6 +85,10 @@ fun NowPlayingScreen(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    BackHandler {
+        onDismiss()
+    }
+    
     val playbackState by viewModel.playbackState.collectAsState()
     val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
     val cachedSongs by viewModel.cachedSongs.collectAsState(initial = emptyList())

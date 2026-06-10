@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -51,19 +52,19 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _offlineMode = MutableStateFlow(prefs.getBoolean("offline_mode", false))
     val offlineMode = _offlineMode.asStateFlow()
 
-    private val _maxCacheLimit = MutableStateFlow(prefs.getInt("max_cache_limit", 50))
-    val maxCacheLimit = _maxCacheLimit.asStateFlow()
+    private val _maxCacheSizeMb = MutableStateFlow(prefs.getLong("max_cache_size_mb", 1024L))
+    val maxCacheSizeMb = _maxCacheSizeMb.asStateFlow()
 
     fun setOfflineMode(enabled: Boolean) {
         _offlineMode.value = enabled
         prefs.edit().putBoolean("offline_mode", enabled).apply()
     }
 
-    fun setMaxCacheLimit(limit: Int) {
-        _maxCacheLimit.value = limit
-        prefs.edit().putInt("max_cache_limit", limit).apply()
+    fun setMaxCacheSizeMb(limitMb: Long) {
+        _maxCacheSizeMb.value = limitMb
+        prefs.edit().putLong("max_cache_size_mb", limitMb).apply()
         viewModelScope.launch {
-            repository.enforceCacheLimit(limit)
+            repository.enforceCacheLimit(limitMb)
         }
     }
 
@@ -138,6 +139,20 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _downloadProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
     val downloadProgress = _downloadProgress.asStateFlow()
 
+    // Aggregate cache size used in Megabytes
+    val currentCacheSizeMb: StateFlow<Double> = repository.cachedSongs
+        .map { songs ->
+            songs.sumOf {
+                val file = java.io.File(it.filePath)
+                if (file.exists()) file.length() else 0L
+            }.toDouble() / (1024.0 * 1024.0)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0.0
+        )
+
     // Combines search query and libraries
     val filteredAlbums: StateFlow<List<JellyfinItem>> = combine(displayAlbums, _searchQuery) { list, query ->
         if (query.isBlank()) list else list.filter {
@@ -170,6 +185,36 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
                     _artists.value = emptyList()
                     _albums.value = emptyList()
                     _songs.value = emptyList()
+                }
+            }
+        }
+
+        // React silently to background cache updates
+        viewModelScope.launch {
+            repository.apiCacheUpdated.collect { cacheKey ->
+                if (cacheKey.contains("getArtists")) {
+                    _artists.value = repository.getArtists()
+                } else if (cacheKey.contains("getAlbums")) {
+                    _albums.value = repository.getAlbums()
+                    // Update current selected artist albums
+                    val selectedArt = _selectedArtist.value
+                    if (selectedArt != null && cacheKey.contains(selectedArt.id)) {
+                        _artistAlbums.value = repository.getAlbums(selectedArt.id)
+                    }
+                } else if (cacheKey.contains("getSongs")) {
+                    _songs.value = repository.getSongs()
+                    
+                    // Update current selected album songs
+                    val selectedAlb = _selectedAlbum.value
+                    if (selectedAlb != null && cacheKey.contains(selectedAlb.id)) {
+                        _albumSongs.value = repository.getSongs(selectedAlb.id)
+                    }
+                    
+                    // Update current selected artist songs
+                    val selectedArt = _selectedArtist.value
+                    if (selectedArt != null && cacheKey.contains(selectedArt.id)) {
+                        _artistSongs.value = repository.getSongs(selectedArt.id)
+                    }
                 }
             }
         }
@@ -210,20 +255,22 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // Fetch artists, albums, songs, and sync favorites in parallel
-                val artistsJob = launch { _artists.value = repository.getArtists(forceFull) }
-                val albumsJob = launch { _albums.value = repository.getAlbums(forceFull = forceFull) }
-                val songsJob = launch { _songs.value = repository.getSongs(forceFull = forceFull) }
-                val syncFavsJob = launch { repository.syncFavorites() }
-
-                artistsJob.join()
-                albumsJob.join()
-                songsJob.join()
-                syncFavsJob.join()
+                // Fetch library items sequentially (artists -> albums -> songs)
+                // This gives faster apparent load times for the first tab (artists)
+                _artists.value = repository.getArtists(forceFull)
+                _albums.value = repository.getAlbums(forceFull = forceFull)
+                _songs.value = repository.getSongs(forceFull = forceFull)
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 _isLoading.value = false
+            }
+
+            // Sync favorites in the background without holding the loading UI
+            try {
+                repository.syncFavorites()
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }
@@ -311,6 +358,10 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             _isLoading.value = false
             if (albumSongs.isNotEmpty()) {
                 playbackManager.playQueue(albumSongs, 0)
+                // Cache the whole album aggressively under high-priority user request
+                for (song in albumSongs) {
+                    downloadAndCacheTrack(song)
+                }
             }
         }
     }
@@ -322,6 +373,10 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             _isLoading.value = false
             if (albumSongs.isNotEmpty()) {
                 playbackManager.appendSongsToQueue(albumSongs)
+                // Appending album to play queue also triggers caching the album's tracks
+                for (song in albumSongs) {
+                    downloadAndCacheTrack(song)
+                }
             }
         }
     }
@@ -339,6 +394,12 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun playTrackInQueue(songsList: List<JellyfinItem>, index: Int) {
         playbackManager.playQueue(songsList, index)
+        // Aggressively cache all tracks of the album if playing from an album context
+        if (songsList.size > 1) {
+            for (song in songsList) {
+                downloadAndCacheTrack(song)
+            }
+        }
     }
 
     fun playCachedSong(song: CachedSong) {

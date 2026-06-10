@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit
 class JellyfinClient {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
     private val moshi = Moshi.Builder()
@@ -87,22 +87,28 @@ class JellyfinClient {
     ): Result<List<JellyfinItem>> = withContext(Dispatchers.IO) {
         val sanitizedUrl = sanitizeUrl(serverUrl)
 
-        var queryUrl = "$sanitizedUrl/Users/$userId/Items?IncludeItemTypes=$itemType&Recursive=true&Fields=PrimaryImageAspectRatio,UserData"
+        var queryUrl = "$sanitizedUrl/Users/$userId/Items?includeItemTypes=$itemType&recursive=true&fields=PrimaryImageAspectRatio,UserData"
         if (parentId != null) {
-            queryUrl += "&ParentId=$parentId"
+            queryUrl += "&parentId=$parentId"
         }
         if (filters != null) {
-            queryUrl += "&Filters=$filters"
+            queryUrl += "&filters=$filters"
         }
         if (minDateLastSaved != null) {
-            queryUrl += "&MinDateLastSaved=$minDateLastSaved"
+            queryUrl += "&minDateLastSaved=$minDateLastSaved"
         }
         
         // Add sorting
         queryUrl += when (itemType) {
-            "MusicArtist" -> "&SortBy=SortName&SortOrder=Ascending"
-            "MusicAlbum" -> "&SortBy=SortName,ProductionYear&SortOrder=Ascending"
-            "Audio" -> "&SortBy=IndexNumber,SortName&SortOrder=Ascending"
+            "MusicArtist" -> "&sortBy=SortName&sortOrder=Ascending"
+            "MusicAlbum" -> "&sortBy=SortName,ProductionYear&sortOrder=Ascending"
+            "Audio" -> {
+                if (parentId != null) {
+                    "&sortBy=IndexNumber,SortName&sortOrder=Ascending"
+                } else {
+                    "&sortBy=SortName&sortOrder=Ascending"
+                }
+            }
             else -> ""
         }
 
@@ -120,10 +126,10 @@ class JellyfinClient {
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(IOException("Server error: ${response.code}"))
                 }
-                val bodyString = response.body?.string()
+                val source = response.body?.source()
                     ?: return@withContext Result.failure(IOException("Empty response body"))
 
-                val responseObj = itemJsonAdapter.fromJson(bodyString)
+                val responseObj = itemJsonAdapter.fromJson(source)
                     ?: return@withContext Result.failure(IOException("Failed to parse music items"))
 
                 Result.success(responseObj.items)

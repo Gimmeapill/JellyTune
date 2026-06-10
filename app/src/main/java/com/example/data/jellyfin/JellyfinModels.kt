@@ -24,9 +24,9 @@ data class AuthResponse(
 
 @JsonClass(generateAdapter = true)
 data class JellyfinItem(
-    @Json(name = "Id") val id: String,
-    @Json(name = "Name") val name: String,
-    @Json(name = "Type") val type: String, // "MusicAlbum", "MusicArtist", "Audio", "Playlist"
+    @Json(name = "Id") val id: String = "",
+    @Json(name = "Name") val name: String = "",
+    @Json(name = "Type") val type: String = "", // "MusicAlbum", "MusicArtist", "Audio", "Playlist"
     @Json(name = "Album") val albumName: String? = null,
     @Json(name = "AlbumId") val albumId: String? = null,
     @Json(name = "Artists") val artists: List<String>? = null,
@@ -45,8 +45,8 @@ data class JellyfinItem(
 
 @JsonClass(generateAdapter = true)
 data class ArtistItem(
-    @Json(name = "Name") val name: String,
-    @Json(name = "Id") val id: String
+    @Json(name = "Name") val name: String = "",
+    @Json(name = "Id") val id: String = ""
 )
 
 @JsonClass(generateAdapter = true)

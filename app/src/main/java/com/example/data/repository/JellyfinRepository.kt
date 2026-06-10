@@ -57,6 +57,9 @@ class JellyfinRepository(private val context: Context) {
     val cachedSongs: Flow<List<CachedSong>> = cachedSongDao.getAllCachedSongsFlow()
     val localFavorites: Flow<List<LocalFavorite>> = favoriteDao.getAllFavorites()
 
+    val apiCacheUpdated = kotlinx.coroutines.flow.MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 64)
+    private val repositoryScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
+
     init {
         // Run auto-login from the active server in Room
         kotlinx.coroutines.MainScope().launch {
@@ -159,7 +162,11 @@ class JellyfinRepository(private val context: Context) {
         if (isDemo()) return getDemoSongs(parentId)
         val server = _activeServer.value ?: return emptyList()
         val songs = fetchWithCache(server, "getSongs", parentId, forceFull) { minDate ->
-            client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId, minDateLastSaved = minDate).getOrDefault(emptyList())
+            val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId, minDateLastSaved = minDate)
+            if (result.isFailure) {
+                android.util.Log.e("JellyfinRepository", "getSongs failed: ${result.exceptionOrNull()?.message}")
+            }
+            result.getOrDefault(emptyList())
         }
         syncSongsFavoriteState(songs)
         return songs
@@ -173,26 +180,44 @@ class JellyfinRepository(private val context: Context) {
         fetchLogic: suspend (String?) -> List<JellyfinItem>
     ): List<JellyfinItem> {
         val cacheKey = "cached_${operation}_${server.serverUrl}_${server.userId}_${parentId ?: "all"}"
-        
+        val sanitizedCacheName = "apicache_${cacheKey.hashCode()}"
+        val cacheFile = File(context.cacheDir, "$sanitizedCacheName.json")
+        val timestampFile = File(context.cacheDir, "$sanitizedCacheName.time")
+
         if (forceFull) {
-            val freshList = fetchLogic(null)
-            if (freshList.isNotEmpty()) {
-                withContext(Dispatchers.IO) {
-                    apiCacheDao.insertCache(com.example.data.database.ApiCache(cacheKey, System.currentTimeMillis(), listAdapter.toJson(freshList)))
+            try {
+                val freshList = fetchLogic(null)
+                if (freshList.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        cacheFile.writeText(listAdapter.toJson(freshList))
+                        timestampFile.writeText(System.currentTimeMillis().toString())
+                    }
+                    apiCacheUpdated.emit(cacheKey)
+                }
+                return freshList
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        val cachedList = if (cacheFile.exists()) {
+            withContext(Dispatchers.IO) {
+                try {
+                    listAdapter.fromJson(cacheFile.readText())
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    null
                 }
             }
-            return freshList
-        }
-
-        val cached = withContext(Dispatchers.IO) { apiCacheDao.getCache(cacheKey) }
-        val cachedList = cached?.dataJson?.let { 
-            try { listAdapter.fromJson(it) } catch (e: Exception) { null } 
-        }
+        } else null
 
         if (cachedList != null && cachedList.isNotEmpty()) {
-            val lastSyncTime = cached.timestamp
-            // Launch non-blocking background task to get updates (delta elements modified since lastSyncTime)
-            kotlinx.coroutines.MainScope().launch(Dispatchers.IO) {
+            val lastSyncTime = if (timestampFile.exists()) {
+                timestampFile.readText().toLongOrNull() ?: System.currentTimeMillis()
+            } else {
+                System.currentTimeMillis()
+            }
+            repositoryScope.launch {
                 try {
                     val isoString = formatIso8601(lastSyncTime)
                     val deltaList = fetchLogic(isoString)
@@ -202,11 +227,15 @@ class JellyfinRepository(private val context: Context) {
                             mergedMap[item.id] = item
                         }
                         val mergedList = mergedMap.values.toList()
-                        apiCacheDao.insertCache(com.example.data.database.ApiCache(
-                            cacheKey, 
-                            System.currentTimeMillis(), 
-                            listAdapter.toJson(mergedList)
-                        ))
+                        withContext(Dispatchers.IO) {
+                            cacheFile.writeText(listAdapter.toJson(mergedList))
+                            timestampFile.writeText(System.currentTimeMillis().toString())
+                        }
+                        apiCacheUpdated.emit(cacheKey)
+                    } else {
+                        withContext(Dispatchers.IO) {
+                            timestampFile.writeText(System.currentTimeMillis().toString())
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -215,13 +244,19 @@ class JellyfinRepository(private val context: Context) {
             return cachedList
         }
 
-        val freshList = fetchLogic(null)
-        if (freshList.isNotEmpty()) {
-            withContext(Dispatchers.IO) {
-                apiCacheDao.insertCache(com.example.data.database.ApiCache(cacheKey, System.currentTimeMillis(), listAdapter.toJson(freshList)))
+        try {
+            val freshList = fetchLogic(null)
+            if (freshList.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    cacheFile.writeText(listAdapter.toJson(freshList))
+                    timestampFile.writeText(System.currentTimeMillis().toString())
+                }
             }
+            return freshList
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return emptyList()
         }
-        return freshList
     }
 
     // --- ARTWORK AND SOURCE ENDPOINTS ---
@@ -305,6 +340,7 @@ class JellyfinRepository(private val context: Context) {
         )
         if (result.isSuccess) {
             val serverFavs = result.getOrNull() ?: emptyList()
+            val serverFavIds = serverFavs.map { it.id }.toSet()
             val allLocal = favoriteDao.getAllFavoritesList()
             val currentLocalIds = allLocal.map { it.songId }.toSet()
 
@@ -324,7 +360,6 @@ class JellyfinRepository(private val context: Context) {
             }
 
             // 2. Authoritative Server Sync: Remove local items that are no longer favorites on the server
-            val serverFavIds = serverFavs.map { it.id }.toSet()
             for (localFav in allLocal) {
                 if (localFav.serverUrl == server.serverUrl && localFav.songId !in serverFavIds) {
                     favoriteDao.deleteFavorite(localFav.songId)
@@ -350,8 +385,8 @@ class JellyfinRepository(private val context: Context) {
 
         // Enforce the cache size limit before adding a new song
         val prefs = context.getSharedPreferences("jellytune_prefs", Context.MODE_PRIVATE)
-        val limit = prefs.getInt("max_cache_limit", 50)
-        enforceCacheLimit(limit - 1)
+        val limitMb = prefs.getLong("max_cache_size_mb", 1024L)
+        enforceCacheLimit(limitMb)
 
         val playUrl = getSongUrl(song.id)
         val cacheDir = File(context.cacheDir, "audio_cache")
@@ -440,22 +475,79 @@ class JellyfinRepository(private val context: Context) {
         }
     }
 
-    suspend fun enforceCacheLimit(maxTracks: Int) = withContext(Dispatchers.IO) {
-        if (maxTracks == Int.MAX_VALUE || maxTracks <= 0) return@withContext
+    suspend fun enforceCacheLimit(maxSizeMb: Long) = withContext(Dispatchers.IO) {
+        if (maxSizeMb == Long.MAX_VALUE || maxSizeMb <= 0) return@withContext
 
+        val maxSizeBytes = maxSizeMb * 1024 * 1024
         val currentCached = cachedSongDao.getAllCachedSongs()
-        if (currentCached.size > maxTracks) {
-            val sorted = currentCached.sortedWith(
-                compareBy<CachedSong> { it.playCount }
-                    .thenBy { it.lastPlayedAt }
-                    .thenBy { it.cachedAt }
+        
+        var totalSize = currentCached.sumOf {
+            val file = File(it.filePath)
+            if (file.exists()) file.length() else 0L
+        }
+
+        if (totalSize > maxSizeBytes) {
+            // Group other songs by album to evict at the album level.
+            // If some items have no album, group them as unique "singles" so they can be evicted individually,
+            // rather than evicting all unknowns at once.
+            val albumGroups = currentCached.groupBy { song ->
+                if (song.album.isBlank() || song.album.equals("Unknown Album", ignoreCase = true)) {
+                    "Single_${song.songId}"
+                } else {
+                    song.album
+                }
+            }
+
+            class AlbumMetric(
+                val albumName: String,
+                val songs: List<CachedSong>,
+                val totalPlays: Int,
+                val maxLastPlayedAt: Long,
+                val minCachedAt: Long,
+                val totalSize: Long
             )
-            val numToEvict = currentCached.size - maxTracks
-            for (i in 0 until numToEvict.coerceAtMost(sorted.size)) {
-                val songToEvict = sorted[i]
-                val file = File(songToEvict.filePath)
-                if (file.exists()) file.delete()
-                cachedSongDao.deleteCachedSong(songToEvict.songId)
+
+            val albumsWithMetrics = albumGroups.map { (albumName, songs) ->
+                val totalPlays = songs.sumOf { it.playCount }
+                val maxLastPlayedAt = songs.maxOfOrNull { it.lastPlayedAt } ?: 0L
+                val minCachedAt = songs.minOfOrNull { it.cachedAt } ?: 0L
+                val albumSize = songs.sumOf {
+                    val file = File(it.filePath)
+                    if (file.exists()) file.length() else 0L
+                }
+                AlbumMetric(
+                    albumName = albumName,
+                    songs = songs,
+                    totalPlays = totalPlays,
+                    maxLastPlayedAt = maxLastPlayedAt,
+                    minCachedAt = minCachedAt,
+                    totalSize = albumSize
+                )
+            }
+
+            // Evict worst-ranking albums first:
+            // 1) total play count ascending (least played first)
+            // 2) maxLastPlayedAt ascending (longest ago played first)
+            // 3) minCachedAt ascending (longest time in cache first)
+            val sortedAlbums = albumsWithMetrics.sortedWith(
+                compareBy<AlbumMetric> { it.totalPlays }
+                    .thenBy { it.maxLastPlayedAt }
+                    .thenBy { it.minCachedAt }
+            )
+
+            for (albumToEvict in sortedAlbums) {
+                if (totalSize <= maxSizeBytes) break
+                
+                // Prune the entire album group
+                for (songToEvict in albumToEvict.songs) {
+                    val file = File(songToEvict.filePath)
+                    val fileSize = if (file.exists()) file.length() else 0L
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                    cachedSongDao.deleteCachedSong(songToEvict.songId)
+                    totalSize -= fileSize
+                }
             }
         }
     }
@@ -480,11 +572,6 @@ class JellyfinRepository(private val context: Context) {
                     durationMs = song.durationMs
                 )
                 favoriteDao.insertFavorite(fav)
-            } else if (!isServerFav && isLocalFav) {
-                val localFavObj = currentLocalFavs.find { it.songId == song.id }
-                if (localFavObj != null && localFavObj.serverUrl == server.serverUrl) {
-                    favoriteDao.deleteFavorite(song.id)
-                }
             }
         }
     }
