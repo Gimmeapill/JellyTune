@@ -68,7 +68,7 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    private val _loudnessEnhancerEnabled = MutableStateFlow(prefs.getBoolean("loudness_enhancer_enabled", false))
+    private val _loudnessEnhancerEnabled = MutableStateFlow(prefs.getBoolean("loudness_enhancer_enabled", true))
     val loudnessEnhancerEnabled = _loudnessEnhancerEnabled.asStateFlow()
 
     private val _loudnessEnhancerGain = MutableStateFlow(prefs.getLong("loudness_enhancer_gain", 300L))

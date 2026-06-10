@@ -119,7 +119,7 @@ class PlaybackManager(
             releaseLoudnessEffect()
 
             val prefs = context.getSharedPreferences("jellytune_prefs", Context.MODE_PRIVATE)
-            val isEnabled = prefs.getBoolean("loudness_enhancer_enabled", false)
+            val isEnabled = prefs.getBoolean("loudness_enhancer_enabled", true)
             val gainMb = prefs.getLong("loudness_enhancer_gain", 300L).toInt()
 
             if (isEnabled) {

@@ -1686,7 +1686,7 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
         }
 
         Text(
-            text = "Phonograph Audio Engine",
+            text = "Playback & Audio",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 8.dp)
@@ -1697,37 +1697,6 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                // System Equalizer
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "System Equalizer",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Launch native dynamic audio tuner and physical pre-amps control board panels.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                    val context = LocalContext.current
-                    androidx.compose.material3.OutlinedButton(
-                        onClick = { viewModel.openSystemEqualizer(context) },
-                        border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
-                    ) {
-                        Text("Configure", color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
-                Spacer(modifier = Modifier.height(16.dp))
-
                 // Loudness Enhancer Switch
                 val isLoudnessEnabled by viewModel.loudnessEnhancerEnabled.collectAsState()
                 Row(
@@ -1742,7 +1711,7 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Equalize tracks volume dynamically and boost low pre-amp gains cleanly.",
+                            text = "Dynamically levels volume across tracks and applies a clean +3.0 dB boost.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -1751,61 +1720,6 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                         checked = isLoudnessEnabled,
                         onCheckedChange = { viewModel.setLoudnessEnhancerEnabled(it) }
                     )
-                }
-
-                if (isLoudnessEnabled) {
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    val loudnessGain by viewModel.loudnessEnhancerGain.collectAsState()
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .padding(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Pre-amp Gain Boost: +${String.format("%.1f", loudnessGain / 100f)} dB",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        androidx.compose.material3.Slider(
-                            value = loudnessGain.toFloat(),
-                            onValueChange = { newValue ->
-                                viewModel.setLoudnessEnhancerGain(newValue.toLong())
-                            },
-                            valueRange = 0f..1500f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "0 dB (Flat)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Text(
-                                text = "+15 dB (Max Gain)",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
                 }
             }
         }
