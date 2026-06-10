@@ -359,10 +359,24 @@ class JellyfinRepository(private val context: Context) {
                 }
             }
 
-            // 2. Authoritative Server Sync: Remove local items that are no longer favorites on the server
+            // 2. Safe Bi-directional Sync:
             for (localFav in allLocal) {
                 if (localFav.serverUrl == server.serverUrl && localFav.songId !in serverFavIds) {
-                    favoriteDao.deleteFavorite(localFav.songId)
+                    val ageMs = System.currentTimeMillis() - localFav.addedAt
+                    if (ageMs > 300_000) {
+                        // The favorite is older than 5 minutes and is not on the server,
+                        // so it was intentionally deleted on another client. Remove it locally.
+                        favoriteDao.deleteFavorite(localFav.songId)
+                    } else {
+                        // The favorite was added recently (possibly offline). Upload it to the server!
+                        client.toggleFavoriteOnServer(
+                            serverUrl = server.serverUrl,
+                            token = server.token,
+                            userId = server.userId,
+                            itemId = localFav.songId,
+                            isFavorite = true
+                        )
+                    }
                 }
             }
         }

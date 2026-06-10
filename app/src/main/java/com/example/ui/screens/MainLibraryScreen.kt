@@ -63,8 +63,11 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -1003,6 +1006,61 @@ fun AlbumDetailsScreen(
                 }
             }
 
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.playAlbumNow(album) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Play", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+
+                FilledTonalButton(
+                    onClick = { viewModel.appendAlbumToQueue(album) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Queue,
+                        contentDescription = "Queue"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Queue", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+
+                val isAlbumDownloaded = albumSongs.isNotEmpty() && albumSongs.all { s -> cachedSongs.any { it.songId == s.id } }
+                val isDownloadingAny = albumSongs.any { s -> viewModel.downloadProgress.collectAsState().value.containsKey(s.id) }
+                
+                OutlinedButton(
+                    onClick = { viewModel.downloadAlbumOffline(album) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                    enabled = albumSongs.isNotEmpty() && !isAlbumDownloaded
+                ) {
+                    Icon(
+                        imageVector = if (isAlbumDownloaded) Icons.Default.CloudDone else Icons.Default.Download,
+                        contentDescription = "Download"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isAlbumDownloaded) "Cached" else if (isDownloadingAny) "Saving..." else "Offline",
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             // Tracks
@@ -1522,7 +1580,11 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
 
                 val maxLimitMb by viewModel.maxCacheSizeMb.collectAsState()
                 val currentSizeMb by viewModel.currentCacheSizeMb.collectAsState()
-                val limits = listOf(250L, 500L, 1024L, 2048L, 5120L, Long.MAX_VALUE)
+
+                val context = LocalContext.current
+                val availableStorageMb = remember(context) { getAvailableStorageMb(context) }
+                val maxSliderValue = remember(availableStorageMb) { maxOf(2048L, availableStorageMb) }
+                val isUnlimited = maxLimitMb == Long.MAX_VALUE
 
                 Text(
                     text = "Max Cache Limit • Used: ${String.format("%.2f", currentSizeMb)} MB",
@@ -1537,30 +1599,217 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                androidx.compose.foundation.lazy.LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    items(limits) { limit ->
-                        val isSelected = maxLimitMb == limit
-                        val label = when (limit) {
-                            Long.MAX_VALUE -> "Unlimited"
-                            250L, 500L -> "$limit MB"
-                            1024L -> "1 GB"
-                            2048L -> "2 GB"
-                            5120L -> "5 GB"
-                            else -> "${limit / 1024} GB"
+                    Text(
+                        text = "Unlimited Storage Cache",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    androidx.compose.material3.Switch(
+                        checked = isUnlimited,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                viewModel.setMaxCacheSizeMb(Long.MAX_VALUE)
+                            } else {
+                                val initial = if (maxLimitMb != Long.MAX_VALUE && maxLimitMb <= maxSliderValue) maxLimitMb else 1024L
+                                viewModel.setMaxCacheSizeMb(initial)
+                            }
+                        }
+                    )
+                }
+
+                if (!isUnlimited) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val sliderValue = maxLimitMb.coerceIn(100L, maxSliderValue).toFloat()
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Limit: ${if (sliderValue >= 1024L) String.format("%.1f GB", sliderValue / 1024f) else "${sliderValue.toLong()} MB"}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Free space: ${if (availableStorageMb >= 1024L) String.format("%.1f GB", availableStorageMb / 1024f) else "$availableStorageMb MB"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
                         }
 
-                        androidx.compose.material3.FilterChip(
-                            selected = isSelected,
-                            onClick = { viewModel.setMaxCacheSizeMb(limit) },
-                            label = { Text(label, style = MaterialTheme.typography.labelMedium) }
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        androidx.compose.material3.Slider(
+                            value = sliderValue,
+                            onValueChange = { newValue ->
+                                viewModel.setMaxCacheSizeMb(newValue.toLong())
+                            },
+                            valueRange = 100f..maxSliderValue.toFloat(),
+                            modifier = Modifier.fillMaxWidth()
                         )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "100 MB",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Text(
+                                text = if (maxSliderValue >= 1024L) String.format("%.1f GB", maxSliderValue / 1024f) else "$maxSliderValue MB",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                 }
             }
         }
+
+        Text(
+            text = "Phonograph Audio Engine",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                // System Equalizer
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "System Equalizer",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Launch native dynamic audio tuner and physical pre-amps control board panels.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    val context = LocalContext.current
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { viewModel.openSystemEqualizer(context) },
+                        border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+                    ) {
+                        Text("Configure", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Loudness Enhancer Switch
+                val isLoudnessEnabled by viewModel.loudnessEnhancerEnabled.collectAsState()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Loudness Normalizer",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Equalize tracks volume dynamically and boost low pre-amp gains cleanly.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = isLoudnessEnabled,
+                        onCheckedChange = { viewModel.setLoudnessEnhancerEnabled(it) }
+                    )
+                }
+
+                if (isLoudnessEnabled) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val loudnessGain by viewModel.loudnessEnhancerGain.collectAsState()
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Pre-amp Gain Boost: +${String.format("%.1f", loudnessGain / 100f)} dB",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        androidx.compose.material3.Slider(
+                            value = loudnessGain.toFloat(),
+                            onValueChange = { newValue ->
+                                viewModel.setLoudnessEnhancerGain(newValue.toLong())
+                            },
+                            valueRange = 0f..1500f,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "0 dB (Flat)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Text(
+                                text = "+15 dB (Max Gain)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(180.dp))
     }
 }
@@ -1764,5 +2013,15 @@ fun EmptyStateBlock(message: String) {
                 lineHeight = 22.sp
             )
         }
+    }
+}
+
+fun getAvailableStorageMb(context: android.content.Context): Long {
+    return try {
+        val stat = android.os.StatFs(context.cacheDir.path)
+        val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
+        availableBytes / (1024 * 1024)
+    } catch (e: Exception) {
+        2048L
     }
 }

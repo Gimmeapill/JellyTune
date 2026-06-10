@@ -73,6 +73,96 @@ class PlaybackManager(
     // Original ordering to support un-shuffling
     private var originalQueue: List<JellyfinItem> = emptyList()
 
+    private var loudnessEnhancer: android.media.audiofx.LoudnessEnhancer? = null
+
+    private val prefChangeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "loudness_enhancer_enabled" || key == "loudness_enhancer_gain") {
+            scope.launch {
+                applyLoudnessEffect()
+            }
+        }
+    }
+
+    init {
+        val prefs = context.getSharedPreferences("jellytune_prefs", Context.MODE_PRIVATE)
+        prefs.registerOnSharedPreferenceChangeListener(prefChangeListener)
+    }
+
+    private fun broadcastAudioSessionId(open: Boolean) {
+        val player = mediaPlayer ?: return
+        val id = player.audioSessionId
+        if (id == android.media.AudioManager.AUDIO_SESSION_ID_GENERATE) return
+        val action = if (open) {
+            "android.media.audiofx.AudioEffect.ACTION_OPEN_AUDIO_EFFECT_SESSION"
+        } else {
+            "android.media.audiofx.AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_SESSION"
+        }
+        try {
+            val intent = android.content.Intent(action).apply {
+                putExtra("android.media.audiofx.AudioEffect.EXTRA_AUDIO_SESSION", id)
+                putExtra("android.media.audiofx.AudioEffect.EXTRA_PACKAGE_NAME", context.packageName)
+                putExtra("android.media.audiofx.AudioEffect.EXTRA_CONTENT_TYPE", 0) // CONTENT_TYPE_MUSIC
+            }
+            context.sendBroadcast(intent)
+            android.util.Log.d("PlaybackManager", "Broadcasted audio session $id: $action")
+        } catch (e: Exception) {
+            android.util.Log.e("PlaybackManager", "Failed to broadcast audio session id", e)
+        }
+    }
+
+    private fun applyLoudnessEffect() {
+        val player = mediaPlayer ?: return
+        val id = player.audioSessionId
+        if (id == android.media.AudioManager.AUDIO_SESSION_ID_GENERATE) return
+
+        try {
+            releaseLoudnessEffect()
+
+            val prefs = context.getSharedPreferences("jellytune_prefs", Context.MODE_PRIVATE)
+            val isEnabled = prefs.getBoolean("loudness_enhancer_enabled", false)
+            val gainMb = prefs.getLong("loudness_enhancer_gain", 300L).toInt()
+
+            if (isEnabled) {
+                loudnessEnhancer = android.media.audiofx.LoudnessEnhancer(id).apply {
+                    setTargetGain(gainMb)
+                    enabled = true
+                }
+                android.util.Log.d("PlaybackManager", "Applied LoudnessEnhancer with gain $gainMb mB on session $id")
+            } else {
+                android.util.Log.d("PlaybackManager", "LoudnessEnhancer disabled")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("PlaybackManager", "Failed to apply LoudnessEnhancer effect", e)
+        }
+    }
+
+    private fun releaseLoudnessEffect() {
+        try {
+            loudnessEnhancer?.enabled = false
+            loudnessEnhancer?.release()
+        } catch (e: Exception) {
+            // ignore
+        } finally {
+            loudnessEnhancer = null
+        }
+    }
+
+    fun openSystemEqualizer(context: Context) {
+        val id = mediaPlayer?.audioSessionId ?: 0
+        try {
+            val intent = android.content.Intent("android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL").apply {
+                putExtra("android.media.audiofx.AudioEffect.EXTRA_AUDIO_SESSION", id)
+                putExtra("android.media.audiofx.AudioEffect.EXTRA_PACKAGE_NAME", context.packageName)
+                putExtra("android.media.audiofx.AudioEffect.EXTRA_CONTENT_TYPE", 0)
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("PlaybackManager", "System Equalizer not found or supported", e)
+            android.widget.Toast.makeText(context, "System Equalizer is not supported on this device.", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun initMediaPlayer() {
         if (mediaPlayer == null) {
             mediaPlayer = MediaPlayer().apply {
@@ -93,10 +183,13 @@ class PlaybackManager(
                     true
                 }
             }
+            broadcastAudioSessionId(true)
         }
     }
 
     private fun resetPlayer() {
+        releaseLoudnessEffect()
+        broadcastAudioSessionId(false)
         mediaPlayer?.reset()
     }
 
@@ -193,6 +286,8 @@ class PlaybackManager(
                     durationMs = mediaPlayer?.duration?.toLong() ?: song.durationMs
                 )
                 startProgressTracker()
+                applyLoudnessEffect()
+                broadcastAudioSessionId(true)
 
                 // Trigger background download-on-play cache if enabled
                 if (!isCached && !repository.isDemo()) {
@@ -353,6 +448,10 @@ class PlaybackManager(
     }
 
     fun release() {
+        val prefs = context.getSharedPreferences("jellytune_prefs", Context.MODE_PRIVATE)
+        prefs.unregisterOnSharedPreferenceChangeListener(prefChangeListener)
+        releaseLoudnessEffect()
+        broadcastAudioSessionId(false)
         stopProgressTracker()
         mediaPlayer?.release()
         mediaPlayer = null

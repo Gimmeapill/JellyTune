@@ -87,7 +87,7 @@ class JellyfinClient {
     ): Result<List<JellyfinItem>> = withContext(Dispatchers.IO) {
         val sanitizedUrl = sanitizeUrl(serverUrl)
 
-        var queryUrl = "$sanitizedUrl/Users/$userId/Items?includeItemTypes=$itemType&recursive=true&fields=PrimaryImageAspectRatio,UserData"
+        var queryUrl = "$sanitizedUrl/Users/$userId/Items?includeItemTypes=$itemType&recursive=true&fields=PrimaryImageAspectRatio,UserData&limit=10000"
         if (parentId != null) {
             queryUrl += "&parentId=$parentId"
         }

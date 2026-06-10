@@ -68,6 +68,26 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private val _loudnessEnhancerEnabled = MutableStateFlow(prefs.getBoolean("loudness_enhancer_enabled", false))
+    val loudnessEnhancerEnabled = _loudnessEnhancerEnabled.asStateFlow()
+
+    private val _loudnessEnhancerGain = MutableStateFlow(prefs.getLong("loudness_enhancer_gain", 300L))
+    val loudnessEnhancerGain = _loudnessEnhancerGain.asStateFlow()
+
+    fun setLoudnessEnhancerEnabled(enabled: Boolean) {
+        _loudnessEnhancerEnabled.value = enabled
+        prefs.edit().putBoolean("loudness_enhancer_enabled", enabled).apply()
+    }
+
+    fun setLoudnessEnhancerGain(gainMb: Long) {
+        _loudnessEnhancerGain.value = gainMb
+        prefs.edit().putLong("loudness_enhancer_gain", gainMb).apply()
+    }
+
+    fun openSystemEqualizer(context: android.content.Context) {
+        playbackManager.openSystemEqualizer(context)
+    }
+
     // Expose filtered view based on offline/cached state
     val displaySongs: StateFlow<List<JellyfinItem>> = combine(_songs, cachedSongs, _offlineMode) { serverSongs, cached, offline ->
         if (offline) {
