@@ -32,11 +32,18 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -519,18 +526,28 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
         )
     }
 
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val gridState = rememberLazyGridState()
+    val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
+        state = gridState,
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .drawGridScrollbar(gridState, scrollbarColor)
     ) {
         items(albums) { album ->
             AlbumCard(
                 album = album,
                 artworkUrl = viewModel.getArtworkUrl(album.id),
-                onClick = { viewModel.selectAlbum(album) },
+                onClick = {
+                    keyboardController?.hide()
+                    viewModel.selectAlbum(album)
+                },
                 onLongClick = { activeActionAlbum = album }
             )
         }
@@ -654,18 +671,28 @@ fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
         return
     }
 
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val gridState = rememberLazyGridState()
+    val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
+        state = gridState,
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .drawGridScrollbar(gridState, scrollbarColor)
     ) {
         items(artists) { artist ->
             ArtistCard(
                 artist = artist,
                 artworkUrl = viewModel.getArtworkUrl(artist.id),
-                onClick = { viewModel.selectArtist(artist) }
+                onClick = {
+                    keyboardController?.hide()
+                    viewModel.selectArtist(artist)
+                }
             )
         }
     }
@@ -684,8 +711,14 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
         return
     }
 
+    val listState = rememberLazyListState()
+    val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .drawListScrollbar(listState, scrollbarColor),
         contentPadding = PaddingValues(8.dp)
     ) {
         itemsIndexed(songs) { idx, song ->
@@ -991,11 +1024,42 @@ fun AlbumDetailsScreen(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                     )
+                    val artistName = album.albumArtist
+                    val isClickable = !artistName.isNullOrBlank() && artistName != "Various Artists"
+                    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
                     Text(
-                        text = album.albumArtist ?: "Various Artists",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        text = artistName ?: "Various Artists",
+                        style = if (isClickable) {
+                            MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.primary,
+                                textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                                fontWeight = FontWeight.Bold
+                            )
+                        } else {
+                            MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
+                        modifier = Modifier
+                            .padding(vertical = 4.dp)
+                            .then(
+                                if (isClickable) {
+                                    Modifier.clickable {
+                                        keyboardController?.hide()
+                                        val artistsList = viewModel.artists.value
+                                        val foundArtist = artistsList.find { it.name.equals(artistName, ignoreCase = true) }
+                                        if (foundArtist != null) {
+                                            viewModel.selectArtist(foundArtist)
+                                        } else {
+                                            viewModel.updateSearchQuery(artistName!!)
+                                        }
+                                        viewModel.selectAlbum(null)
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
                     )
                     Text(
                         text = "${albumSongs.size} Tracks",
@@ -1063,9 +1127,15 @@ fun AlbumDetailsScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
+            val albumListState = rememberLazyListState()
+            val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+
             // Tracks
             LazyColumn(
-                modifier = Modifier.weight(1f),
+                state = albumListState,
+                modifier = Modifier
+                    .weight(1f)
+                    .drawListScrollbar(albumListState, scrollbarColor),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
             ) {
                 itemsIndexed(albumSongs) { idx, song ->
@@ -1111,7 +1181,24 @@ fun ArtistDetailsScreen(
     val cachedSongs by viewModel.cachedSongs.collectAsState(initial = emptyList())
     val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
 
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     var activeActionAlbum by remember { mutableStateOf<JellyfinItem?>(null) }
+
+    val sortedAlbums = remember(artistAlbums) {
+        artistAlbums.sortedWith(
+            compareByDescending<JellyfinItem> { it.productionYear ?: 0 }
+                .thenBy { it.name }
+        )
+    }
+
+    val sortedSongs = remember(artistSongs) {
+        artistSongs.sortedWith(
+            compareBy<JellyfinItem> { it.albumName ?: "" }
+                .thenBy { it.parentIndexNumber ?: 1 }
+                .thenBy { it.indexNumber ?: 0 }
+                .thenBy { it.name }
+        )
+    }
 
     if (activeActionAlbum != null) {
         AlbumActionDialog(
@@ -1188,12 +1275,18 @@ fun ArtistDetailsScreen(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
+            val artistListState = rememberLazyListState()
+            val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+
             LazyColumn(
-                modifier = Modifier.weight(1f),
+                state = artistListState,
+                modifier = Modifier
+                    .weight(1f)
+                    .drawListScrollbar(artistListState, scrollbarColor),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
             ) {
                 // Feature 2: Display artist's albums vertically as a proper list
-                if (artistAlbums.isNotEmpty()) {
+                if (sortedAlbums.isNotEmpty()) {
                     item {
                         Text(
                             text = "Albums",
@@ -1202,12 +1295,15 @@ fun ArtistDetailsScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
-                    items(artistAlbums) { album ->
+                    items(sortedAlbums) { album ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .combinedClickable(
-                                    onClick = { viewModel.selectAlbum(album) },
+                                    onClick = {
+                                        keyboardController?.hide()
+                                        viewModel.selectAlbum(album)
+                                    },
                                     onLongClick = { activeActionAlbum = album }
                                 )
                                 .padding(vertical = 8.dp, horizontal = 16.dp),
@@ -1242,7 +1338,13 @@ fun ArtistDetailsScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = album.albumArtist ?: "Various Artists",
+                                    text = buildString {
+                                        append(album.albumArtist ?: "Various Artists")
+                                        if (album.productionYear != null && album.productionYear > 0) {
+                                            append(" • ")
+                                            append(album.productionYear)
+                                        }
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                     maxLines = 1,
@@ -1257,7 +1359,7 @@ fun ArtistDetailsScreen(
                 }
 
                 // Header for songs section
-                if (artistSongs.isNotEmpty()) {
+                if (sortedSongs.isNotEmpty()) {
                     item {
                         Text(
                             text = "Songs",
@@ -1266,7 +1368,7 @@ fun ArtistDetailsScreen(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
-                    itemsIndexed(artistSongs) { idx, song ->
+                    itemsIndexed(sortedSongs) { idx, song ->
                         val isCurrent = song.id == currentSong?.id
                         val isCached = cachedSongs.any { it.songId == song.id }
                         val isFav = localFavs.any { it.songId == song.id }
@@ -1279,7 +1381,7 @@ fun ArtistDetailsScreen(
                             isCached = isCached,
                             isFav = isFav,
                             dlProgress = null,
-                            onPlay = { viewModel.playTrackInQueue(artistSongs, idx) },
+                            onPlay = { viewModel.playTrackInQueue(sortedSongs, idx) },
                             onFavToggle = { viewModel.toggleFavorite(song) },
                             onCacheClick = {
                                 if (isCached) {
@@ -2168,5 +2270,63 @@ fun getAvailableStorageMb(context: android.content.Context): Long {
         availableBytes / (1024 * 1024)
     } catch (e: Exception) {
         2048L
+    }
+}
+
+fun Modifier.drawListScrollbar(
+    state: LazyListState,
+    color: Color
+): Modifier = this.drawWithContent {
+    drawContent()
+    val layoutInfo = state.layoutInfo
+    val totalItemsCount = layoutInfo.totalItemsCount
+    val visibleItemsInfo = layoutInfo.visibleItemsInfo
+    if (totalItemsCount > 0 && visibleItemsInfo.isNotEmpty()) {
+        val firstVisibleItem = visibleItemsInfo.first()
+        val visibleItemsCount = visibleItemsInfo.size
+        
+        if (visibleItemsCount < totalItemsCount) {
+            val viewportHeight = size.height
+            val firstVisibleIndex = firstVisibleItem.index
+            
+            val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
+            val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
+            
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(x = size.width - 6.dp.toPx(), y = scrollbarOffsetY),
+                size = Size(width = 4.dp.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx())
+            )
+        }
+    }
+}
+
+fun Modifier.drawGridScrollbar(
+    state: LazyGridState,
+    color: Color
+): Modifier = this.drawWithContent {
+    drawContent()
+    val layoutInfo = state.layoutInfo
+    val totalItemsCount = layoutInfo.totalItemsCount
+    val visibleItemsInfo = layoutInfo.visibleItemsInfo
+    if (totalItemsCount > 0 && visibleItemsInfo.isNotEmpty()) {
+        val firstVisibleItem = visibleItemsInfo.first()
+        val visibleItemsCount = visibleItemsInfo.size
+        
+        if (visibleItemsCount < totalItemsCount) {
+            val viewportHeight = size.height
+            val firstVisibleIndex = firstVisibleItem.index
+            
+            val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
+            val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
+            
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(x = size.width - 6.dp.toPx(), y = scrollbarOffsetY),
+                size = Size(width = 4.dp.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx())
+            )
+        }
     }
 }

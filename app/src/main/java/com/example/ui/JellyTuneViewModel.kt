@@ -90,11 +90,17 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
 
     // Expose filtered view based on offline/cached state
     val displaySongs: StateFlow<List<JellyfinItem>> = combine(_songs, cachedSongs, _offlineMode) { serverSongs, cached, offline ->
-        if (offline) {
+        val list = if (offline) {
             cached.map { it.toJellyfinItem() }
         } else {
             serverSongs
         }
+        list.sortedWith(
+            compareBy<JellyfinItem> { it.albumName ?: "" }
+                .thenBy { it.parentIndexNumber ?: 1 }
+                .thenBy { it.indexNumber ?: 0 }
+                .thenBy { it.name }
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val displayAlbums: StateFlow<List<JellyfinItem>> = combine(_albums, cachedSongs, _offlineMode) { serverAlbums, cached, offline ->
