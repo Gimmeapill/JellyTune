@@ -46,13 +46,19 @@
         </path>
     </group>
 
-    <!-- Sleek and highly visible premium Double Eighth Note with high-contrast outline -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:strokeColor="#FF080026"
-        android:strokeWidth="3"
-        android:strokeLineJoin="round"
-        android:strokeLineCap="round"
-        android:pathData="M 43,62 C 40.5,62 38.5,63.5 38.5,66 C 38.5,68.5 40.5,70 43,70 C 45.5,70 47.5,68.5 47.5,66 L 47.5,42 L 65.5,37 L 65.5,55 C 63,55 61,56.5 61,59 C 61,61.5 63,63 65.5,63 C 68,63 70,61.5 70,59 L 70,32 L 47.5,37 L 47.5,62 Z" />
+    <!-- Sleek and highly visible premium Double Eighth Note, styled in Phonograph signature warm gold with crisp high-contrast stroke -->
+    <group
+        android:scaleX="1.15"
+        android:scaleY="1.15"
+        android:pivotX="54.0"
+        android:pivotY="54.0">
+        <path
+            android:fillColor="#FFD600"
+            android:strokeColor="#FF080026"
+            android:strokeWidth="1.6"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round"
+            android:pathData="M 43,62 C 40.5,62 38.5,63.5 38.5,66 C 38.5,68.5 40.5,70 43,70 C 45.5,70 47.5,68.5 47.5,66 L 47.5,42 L 65.5,37 L 65.5,55 C 63,55 61,56.5 61,59 C 61,61.5 63,63 65.5,63 C 68,63 70,61.5 70,59 L 70,32 L 47.5,37 L 43,37 L 43,62 Z" />
+    </group>
 
 </vector>

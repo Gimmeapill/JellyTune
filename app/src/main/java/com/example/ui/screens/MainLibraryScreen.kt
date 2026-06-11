@@ -1302,69 +1302,115 @@ fun ArtistDetailsScreen(
 fun FavoritesTab(viewModel: JellyTuneViewModel) {
     val favorites by viewModel.localFavorites.collectAsState(initial = emptyList())
 
-    if (favorites.isEmpty()) {
-        EmptyStateBlock("No favorites added yet.\nPress the heart icon beside any track.")
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp)
-    ) {
-        itemsIndexed(favorites) { idx, favorite ->
-            val mappedSongItem = favorite.toJellyfinItem()
-            val playbackState = viewModel.playbackState.collectAsState().value
-            val isCurrent = mappedSongItem.id == playbackState.currentSong?.id
-
+    Column(modifier = Modifier.fillMaxSize()) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
             Row(
-                modifier = Modifier
-                    .fillParentMaxWidth()
-                    .clickable { viewModel.playFavoriteSong(favorite) }
-                    .padding(vertical = 12.dp),
+                modifier = Modifier.padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(viewModel.getArtworkUrl(favorite.songId))
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "Local Favorites Info",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
                 Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
+                Column {
                     Text(
-                        text = favorite.title,
+                        text = "Local Favorites",
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Text(
-                        text = favorite.artist,
+                        text = "Favorites are currently stored locally on this device. Two-way Jellyfin server synchronization is not fully active.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isCurrent) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )
                 }
+            }
+        }
 
-                IconButton(onClick = { viewModel.toggleFavoriteFav(favorite) }) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        tint = MaterialTheme.colorScheme.primary,
-                        contentDescription = "Remove from Favorites"
-                    )
+        if (favorites.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                EmptyStateBlock("No favorites added yet.\nPress the heart icon beside any track.")
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp)
+            ) {
+                itemsIndexed(favorites) { idx, favorite ->
+                    val mappedSongItem = favorite.toJellyfinItem()
+                    val playbackState = viewModel.playbackState.collectAsState().value
+                    val isCurrent = mappedSongItem.id == playbackState.currentSong?.id
+
+                    Row(
+                        modifier = Modifier
+                            .fillParentMaxWidth()
+                            .clickable { viewModel.playFavoriteSong(favorite) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(viewModel.getArtworkUrl(favorite.songId))
+                                    .build(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = favorite.title,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = favorite.artist,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        IconButton(onClick = { viewModel.toggleFavoriteFav(favorite) }) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                tint = MaterialTheme.colorScheme.primary,
+                                contentDescription = "Remove from Favorites"
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1719,6 +1765,191 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                     androidx.compose.material3.Switch(
                         checked = isLoudnessEnabled,
                         onCheckedChange = { viewModel.setLoudnessEnhancerEnabled(it) }
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "About JellyTune",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+        ) {
+            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+            val context = LocalContext.current
+            
+            val packageInfo = remember(context) {
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.PackageInfoFlags.of(0))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        context.packageManager.getPackageInfo(context.packageName, 0)
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            val versionName = packageInfo?.versionName ?: "37.0"
+            val versionCode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                packageInfo?.longVersionCode?.toString() ?: "37"
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo?.versionCode?.toString() ?: "37"
+            }
+
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // App identity row
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = "JellyTune Logo",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = "JellyTune",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Version $versionName (Build $versionCode)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "A sleek, modern, open-source music player for your self-hosted Jellyfin server. Built from the ground up for high-performance offline playback, featuring aggressive caching, gapless support, and zero ads.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                )
+
+                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+                // Contributors / Parent projects
+                Text(
+                    text = "Parent Projects",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                // Jellyfin Link Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { uriHandler.openUri("https://github.com/jellyfin/jellyfin") }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Jellyfin",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "The free software media system ecosystem.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Visit Jellyfin GitHub",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Phonograph Link Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { uriHandler.openUri("https://github.com/kabouzeid/Phonograph") }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Phonograph Music Player",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Inspiring elegant Material design audio structures.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Visit Phonograph GitHub",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+
+                // Source Code / Contribution section
+                Text(
+                    text = "Open Source & Support",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { uriHandler.openUri("https://github.com/Gimmeapill/JellyTune") }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "JellyTune Repository",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "View source code, report issues, or contribute.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Visit JellyTune GitHub",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
