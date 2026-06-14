@@ -271,7 +271,9 @@ class PlaybackManager(
                 withContext(Dispatchers.IO) {
                     if (cachedFile != null) {
                         // Play from local phone layout
-                        mediaPlayer?.setDataSource(cachedFile.absolutePath)
+                        val fis = java.io.FileInputStream(cachedFile)
+                        mediaPlayer?.setDataSource(fis.fd)
+                        fis.close()
                     } else {
                         // Play from Jellyfin server URL directly
                         val streamUrl = repository.getSongUrl(song.id)

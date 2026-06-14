@@ -124,6 +124,11 @@ import com.example.data.jellyfin.JellyfinItem
 import com.example.playback.PlaybackState
 import com.example.playback.toJellyfinItem
 import com.example.ui.JellyTuneViewModel
+import androidx.compose.ui.composed
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1705,7 +1710,7 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Offline Mode Only",
+                            text = "Force Offline Mode",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -1719,6 +1724,33 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                     androidx.compose.material3.Switch(
                         checked = isOffline,
                         onCheckedChange = { viewModel.setOfflineMode(it) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Wifi-Only Mode switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Wi-Fi Only Mode",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Save mobile data by forcing offline mode when disconnected from Wi-Fi.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    val isWifiOnly by viewModel.wifiOnlyMode.collectAsState()
+                    androidx.compose.material3.Switch(
+                        checked = isWifiOnly,
+                        onCheckedChange = { viewModel.setWifiOnlyMode(it) }
                     )
                 }
 
@@ -2276,57 +2308,129 @@ fun getAvailableStorageMb(context: android.content.Context): Long {
 fun Modifier.drawListScrollbar(
     state: LazyListState,
     color: Color
-): Modifier = this.drawWithContent {
-    drawContent()
-    val layoutInfo = state.layoutInfo
-    val totalItemsCount = layoutInfo.totalItemsCount
-    val visibleItemsInfo = layoutInfo.visibleItemsInfo
-    if (totalItemsCount > 0 && visibleItemsInfo.isNotEmpty()) {
-        val firstVisibleItem = visibleItemsInfo.first()
-        val visibleItemsCount = visibleItemsInfo.size
-        
-        if (visibleItemsCount < totalItemsCount) {
-            val viewportHeight = size.height
-            val firstVisibleIndex = firstVisibleItem.index
-            
-            val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
-            val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
-            
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(x = size.width - 6.dp.toPx(), y = scrollbarOffsetY),
-                size = Size(width = 4.dp.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx())
+): Modifier = this.composed {
+    val coroutineScope = rememberCoroutineScope()
+    var isDragging by remember { mutableStateOf(false) }
+
+    this
+        .drawWithContent {
+            drawContent()
+            val layoutInfo = state.layoutInfo
+            val totalItemsCount = layoutInfo.totalItemsCount
+            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+            if (totalItemsCount > 0 && visibleItemsInfo.isNotEmpty()) {
+                val firstVisibleItem = visibleItemsInfo.first()
+                val visibleItemsCount = visibleItemsInfo.size
+                
+                if (visibleItemsCount < totalItemsCount) {
+                    val viewportHeight = size.height
+                    val firstVisibleIndex = firstVisibleItem.index
+                    
+                    val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
+                    val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
+                    
+                    val barWidth = if (isDragging) 12.dp else 6.dp
+                    val barColor = if (isDragging) color.copy(alpha = 0.85f) else color
+                    
+                    drawRoundRect(
+                        color = barColor,
+                        topLeft = Offset(x = size.width - (barWidth + 2.dp).toPx(), y = scrollbarOffsetY),
+                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth.toPx() / 2, barWidth.toPx() / 2)
+                    )
+                }
+            }
+        }
+        .pointerInput(state) {
+            detectDragGestures(
+                onDragStart = { offset ->
+                    val width = size.width
+                    if (offset.x >= width - 64.dp.toPx()) {
+                        isDragging = true
+                    }
+                },
+                onDragEnd = { isDragging = false },
+                onDragCancel = { isDragging = false },
+                onDrag = { change, _ ->
+                    if (isDragging) {
+                        change.consume()
+                        val viewportHeight = size.height
+                        val totalItemsCount = state.layoutInfo.totalItemsCount
+                        if (totalItemsCount > 0 && viewportHeight > 0) {
+                            val touchY = change.position.y
+                            val progress = (touchY / viewportHeight).coerceIn(0f, 1f)
+                            val targetIndex = (progress * totalItemsCount).toInt().coerceIn(0, totalItemsCount - 1)
+                            coroutineScope.launch {
+                                state.scrollToItem(targetIndex)
+                            }
+                        }
+                    }
+                }
             )
         }
-    }
 }
 
 fun Modifier.drawGridScrollbar(
     state: LazyGridState,
     color: Color
-): Modifier = this.drawWithContent {
-    drawContent()
-    val layoutInfo = state.layoutInfo
-    val totalItemsCount = layoutInfo.totalItemsCount
-    val visibleItemsInfo = layoutInfo.visibleItemsInfo
-    if (totalItemsCount > 0 && visibleItemsInfo.isNotEmpty()) {
-        val firstVisibleItem = visibleItemsInfo.first()
-        val visibleItemsCount = visibleItemsInfo.size
-        
-        if (visibleItemsCount < totalItemsCount) {
-            val viewportHeight = size.height
-            val firstVisibleIndex = firstVisibleItem.index
-            
-            val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
-            val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
-            
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(x = size.width - 6.dp.toPx(), y = scrollbarOffsetY),
-                size = Size(width = 4.dp.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx(), 2.dp.toPx())
+): Modifier = this.composed {
+    val coroutineScope = rememberCoroutineScope()
+    var isDragging by remember { mutableStateOf(false) }
+
+    this
+        .drawWithContent {
+            drawContent()
+            val layoutInfo = state.layoutInfo
+            val totalItemsCount = layoutInfo.totalItemsCount
+            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+            if (totalItemsCount > 0 && visibleItemsInfo.isNotEmpty()) {
+                val firstVisibleItem = visibleItemsInfo.first()
+                val visibleItemsCount = visibleItemsInfo.size
+                
+                if (visibleItemsCount < totalItemsCount) {
+                    val viewportHeight = size.height
+                    val firstVisibleIndex = firstVisibleItem.index
+                    
+                    val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
+                    val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
+                    
+                    val barWidth = if (isDragging) 12.dp else 6.dp
+                    val barColor = if (isDragging) color.copy(alpha = 0.85f) else color
+                    
+                    drawRoundRect(
+                        color = barColor,
+                        topLeft = Offset(x = size.width - (barWidth + 2.dp).toPx(), y = scrollbarOffsetY),
+                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth.toPx() / 2, barWidth.toPx() / 2)
+                    )
+                }
+            }
+        }
+        .pointerInput(state) {
+            detectDragGestures(
+                onDragStart = { offset ->
+                    val width = size.width
+                    if (offset.x >= width - 64.dp.toPx()) {
+                        isDragging = true
+                    }
+                },
+                onDragEnd = { isDragging = false },
+                onDragCancel = { isDragging = false },
+                onDrag = { change, _ ->
+                    if (isDragging) {
+                        change.consume()
+                        val viewportHeight = size.height
+                        val totalItemsCount = state.layoutInfo.totalItemsCount
+                        if (totalItemsCount > 0 && viewportHeight > 0) {
+                            val touchY = change.position.y
+                            val progress = (touchY / viewportHeight).coerceIn(0f, 1f)
+                            val targetIndex = (progress * totalItemsCount).toInt().coerceIn(0, totalItemsCount - 1)
+                            coroutineScope.launch {
+                                state.scrollToItem(targetIndex)
+                            }
+                        }
+                    }
+                }
             )
         }
-    }
 }

@@ -5,60 +5,88 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Official Jellyfin branding shape zoomed out and centered for professional padding -->
+    <!-- Glowing outer circle of neon tube -->
     <group
-        android:scaleX="0.68"
-        android:scaleY="0.68"
-        android:translateX="29.18"
-        android:translateY="31.9">
-        
-        <!-- Outer dome (even-odd clip path) -->
-        <path
-            android:fillType="evenOdd"
-            android:pathData="M.98 64.996C-3.695 55.606 26.977.001 36.5.001c9.533 0 40.153 55.713 35.527 64.995s-66.368 9.391-71.045 0m12.255-8.148c3.065 6.152 43.518 6.084 46.548 0 3.03-6.086-17.033-42.587-23.275-42.587S10.17 50.695 13.234 56.848z">
-            <aapt:attr name="android:fillColor">
-                <gradient
-                    android:startX="12.5"
-                    android:startY="30"
-                    android:endX="72.5"
-                    android:endY="63"
-                    android:type="linear">
-                    <item android:offset="0" android:color="#FFAA5CC3" />
-                    <item android:offset="1" android:color="#FF00A4DC" />
-                </gradient>
-            </aapt:attr>
-        </path>
-
-        <!-- Inner droplet -->
-        <path
-            android:pathData="M24.711 49.158c-1.552-3.116 8.626-21.57 11.788-21.57 3.167.002 13.323 18.488 11.788 21.57-1.535 3.081-22.025 3.115-23.577 0z">
-            <aapt:attr name="android:fillColor">
-                <gradient
-                    android:startX="24.7"
-                    android:startY="27.5"
-                    android:endX="48.3"
-                    android:endY="49.2"
-                    android:type="linear">
-                    <item android:offset="0" android:color="#FFAA5CC3" />
-                    <item android:offset="1" android:color="#FF00A4DC" />
-                </gradient>
-            </aapt:attr>
-        </path>
-    </group>
-
-    <!-- Sleek and highly visible premium Double Eighth Note, styled in Phonograph signature warm gold with crisp high-contrast stroke -->
-    <group
-        android:scaleX="1.15"
-        android:scaleY="1.15"
+        android:scaleX="0.75"
+        android:scaleY="0.75"
         android:pivotX="54.0"
         android:pivotY="54.0">
+        
+        <!-- Deep diffuse blue/violet outer halo -->
         <path
-            android:fillColor="#FFD600"
-            android:strokeColor="#FF080026"
-            android:strokeWidth="1.6"
-            android:strokeLineJoin="round"
-            android:strokeLineCap="round"
-            android:pathData="M 43,62 C 40.5,62 38.5,63.5 38.5,66 C 38.5,68.5 40.5,70 43,70 C 45.5,70 47.5,68.5 47.5,66 L 47.5,42 L 65.5,37 L 65.5,55 C 63,55 61,56.5 61,59 C 61,61.5 63,63 65.5,63 C 68,63 70,61.5 70,59 L 70,32 L 47.5,37 L 43,37 L 43,62 Z" />
+            android:pathData="M 54,12 A 42,42 0 1,1 53.9,12 Z"
+            android:strokeWidth="10"
+            android:strokeColor="#1F8300E6"
+            android:strokeLineCap="round"/>
+            
+        <!-- Vibrant violet/pink glow trail -->
+        <path
+            android:pathData="M 54,12 A 42,42 0 1,1 53.9,12 Z"
+            android:strokeWidth="4"
+            android:strokeColor="#7FFD52E5"
+            android:strokeLineCap="round"/>
+
+        <!-- High contrast crisp edge -->
+        <path
+            android:pathData="M 54,12 A 42,42 0 1,1 53.9,12 Z"
+            android:strokeWidth="1.2"
+            android:strokeColor="#FFE58CFF"
+            android:strokeLineCap="round"/>
     </group>
 
+    <!-- Stylized Soundwave "J" (JellyTune core logo) -->
+    <group
+        android:scaleX="0.65"
+        android:scaleY="0.65"
+        android:pivotX="54.0"
+        android:pivotY="54.0">
+        
+        <!-- Path data for the Jelly soundwave profile -->
+        <!-- Starts from the bottom-left bulb, climbs up to form 'J', loops wide, then ripples into sound wave peaks -->
+        
+        <!-- Layer 1: Bottom Neon Glow (Extremely wide, low opacity) -->
+        <path
+            android:pathData="M 24,62 C 21,62 18,65 18,69 C 18,73 21,76 25,76 C 29,76 32,73 32,69 C 32,64 36,44 41,35 C 44,28 48,22 53,22 C 58,22 61,28 61,38 C 61,54 64,62 68,66 C 71,70 75,70 78,66 L 83,52 C 84,48 87,48 88,52 L 91,61 C 92,63 94,63 95,61 L 98,55 C 99,53 100,53 101,55 L 104,61"
+            android:strokeWidth="14"
+            android:strokeColor="#2F8300E6"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"/>
+
+        <path
+            android:pathData="M 24,62 C 21,62 18,65 18,69 C 18,73 21,76 25,76 C 29,76 32,73 32,69 C 32,64 36,44 41,35 C 44,28 48,22 53,22 C 58,22 61,28 61,38 C 61,54 64,62 68,66 C 71,70 75,70 78,66 L 83,52 C 84,48 87,48 88,52 L 91,61 C 92,63 94,63 95,61 L 98,55 C 99,53 100,53 101,55 L 104,61"
+            android:strokeWidth="10"
+            android:strokeColor="#4FFD52E5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"/>
+
+        <!-- Layer 2: Main Rich Gradient Body (Solid, Medium Wide) -->
+        <path
+            android:pathData="M 24,62 C 21,62 18,65 18,69 C 18,73 21,76 25,76 C 29,76 32,73 32,69 C 32,64 36,44 41,35 C 44,28 48,22 53,22 C 58,22 61,28 61,38 C 61,54 64,62 68,66 C 71,70 75,70 78,66 L 83,52 C 84,48 87,48 88,52 L 91,61 C 92,63 94,63 95,61 L 98,55 C 99,53 100,53 101,55 L 104,61"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:startX="18"
+                    android:startY="49"
+                    android:endX="104"
+                    android:endY="49"
+                    android:type="linear">
+                    <item android:offset="0" android:color="#FF8E2DE2" />
+                    <item android:offset="0.5" android:color="#FFEB4BE2" />
+                    <item android:offset="1" android:color="#FF00A4DC" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Layer 3: Core Neon High-Intensity Discharge line (Thin, ultra bright white/violet) -->
+        <path
+            android:pathData="M 24,62 C 21,62 18,65 18,69 C 18,73 21,76 25,76 C 29,76 32,73 32,69 C 32,64 36,44 41,35 C 44,28 48,22 53,22 C 58,22 61,28 61,38 C 61,54 64,62 68,66 C 71,70 75,70 78,66 L 83,52 C 84,48 87,48 88,52 L 91,61 C 92,63 94,63 95,61 L 98,55 C 99,53 100,53 101,55 L 104,61"
+            android:strokeWidth="1.5"
+            android:strokeColor="#FFFFF0FF"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"/>
+            
+    </group>
+    
 </vector>

@@ -49,16 +49,34 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     // Saved preferences configurations
     private val prefs = application.getSharedPreferences("jellytune_prefs", android.content.Context.MODE_PRIVATE)
 
+    private val networkMonitor = com.example.util.NetworkMonitor(application)
+    
     private val _offlineMode = MutableStateFlow(prefs.getBoolean("offline_mode", false))
     val offlineMode = _offlineMode.asStateFlow()
 
-    private val _maxCacheSizeMb = MutableStateFlow(prefs.getLong("max_cache_size_mb", 1024L))
-    val maxCacheSizeMb = _maxCacheSizeMb.asStateFlow()
+    private val _wifiOnlyMode = MutableStateFlow(prefs.getBoolean("wifi_only_mode", false))
+    val wifiOnlyMode = _wifiOnlyMode.asStateFlow()
 
     fun setOfflineMode(enabled: Boolean) {
         _offlineMode.value = enabled
         prefs.edit().putBoolean("offline_mode", enabled).apply()
     }
+
+    fun setWifiOnlyMode(enabled: Boolean) {
+        _wifiOnlyMode.value = enabled
+        prefs.edit().putBoolean("wifi_only_mode", enabled).apply()
+    }
+
+    val effectiveOfflineMode: StateFlow<Boolean> = combine(
+        _offlineMode,
+        _wifiOnlyMode,
+        networkMonitor.isWifiConnected
+    ) { offlineSelected, wifiOnly, isWifi ->
+        offlineSelected || (wifiOnly && !isWifi)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _offlineMode.value)
+
+    private val _maxCacheSizeMb = MutableStateFlow(prefs.getLong("max_cache_size_mb", 1024L))
+    val maxCacheSizeMb = _maxCacheSizeMb.asStateFlow()
 
     fun setMaxCacheSizeMb(limitMb: Long) {
         _maxCacheSizeMb.value = limitMb
@@ -89,7 +107,7 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // Expose filtered view based on offline/cached state
-    val displaySongs: StateFlow<List<JellyfinItem>> = combine(_songs, cachedSongs, _offlineMode) { serverSongs, cached, offline ->
+    val displaySongs: StateFlow<List<JellyfinItem>> = combine(_songs, cachedSongs, effectiveOfflineMode) { serverSongs, cached, offline ->
         val list = if (offline) {
             cached.map { it.toJellyfinItem() }
         } else {
@@ -103,7 +121,7 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val displayAlbums: StateFlow<List<JellyfinItem>> = combine(_albums, cachedSongs, _offlineMode) { serverAlbums, cached, offline ->
+    val displayAlbums: StateFlow<List<JellyfinItem>> = combine(_albums, cachedSongs, effectiveOfflineMode) { serverAlbums, cached, offline ->
         if (offline) {
             cached.map { it.album }.distinct().map { albumName ->
                 serverAlbums.find { it.name.equals(albumName, ignoreCase = true) }
@@ -119,7 +137,7 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val displayArtists: StateFlow<List<JellyfinItem>> = combine(_artists, cachedSongs, _offlineMode) { serverArtists, cached, offline ->
+    val displayArtists: StateFlow<List<JellyfinItem>> = combine(_artists, cachedSongs, effectiveOfflineMode) { serverArtists, cached, offline ->
         if (offline) {
             cached.map { it.artist }.distinct().map { artistName ->
                 serverArtists.find { it.name.equals(artistName, ignoreCase = true) }
@@ -312,7 +330,7 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         viewModelScope.launch {
-            if (_offlineMode.value) {
+            if (effectiveOfflineMode.value) {
                 val cached = repository.getCachedSongsList()
                 _albumSongs.value = cached
                     .filter { it.album.equals(album.name, ignoreCase = true) }
@@ -333,7 +351,7 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         viewModelScope.launch {
-            if (_offlineMode.value) {
+            if (effectiveOfflineMode.value) {
                 val cached = repository.getCachedSongsList()
                 val artistSongs = cached
                     .filter { it.artist.equals(artist.name, ignoreCase = true) }
