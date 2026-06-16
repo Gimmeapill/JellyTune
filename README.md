@@ -1,5 +1,9 @@
 # 🎵 JellyTune
 
+<p align="center">
+  <img src="store_assets/feature_graphic_1024_x_500.png" alt="JellyTune Feature Banner" width="100%">
+</p>
+
 [![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Fully Ad-Free](https://img.shields.io/badge/Ad--Free-Pure%20Listening-success.svg)](#)
 [![Open Source](https://img.shields.io/badge/Open%20Source-100%25-orange.svg)](#)
@@ -10,11 +14,11 @@ JellyTune is a sleek, lightweight, open-source audio client designed specificall
 
 ## 📸 Screenshots
 
-| 🖥️ Login & Connection | 🎵 Main Library | 🎧 Now Playing |
+| 🖥️ Login Setup | 🎵 Main Library | 🎧 Now Playing |
 | :---: | :---: | :---: |
-| *[Add Connection Setup Screen]* | *[Add Caching & Main Library Screen]* | *[Add Sleek Player Controls Screen]* |
+| <img src="screenshots/login.png" width="220" alt="Login & Connection Setup"> | <img src="screenshots/library.png" width="220" alt="Caching & Main Library"> | <img src="screenshots/player.png" width="220" alt="Sleek Player Controls"> |
 
-*Provide your screenshots here by adding them to your repository (e.g., in a `metadata/screenshots` or `docs/` folder) and linking them above.*
+*💡 **How to add screenshots:** Simply drop your customized app screenshots into the `/screenshots` directory at the project root with the names `login.png`, `library.png`, and `player.png`, and they will automatically show up above when browsing this repository on GitHub! (Existing test/mockup screenshot can be viewed at [screenshots/greeting.png](screenshots/greeting.png))*
 
 ---
 

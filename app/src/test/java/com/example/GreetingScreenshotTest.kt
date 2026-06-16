@@ -24,6 +24,6 @@ class GreetingScreenshotTest {
   fun greeting_screenshot() {
     composeTestRule.setContent { JellyTuneTheme { Text("JellyTune") } }
 
-    composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
+    composeTestRule.onRoot().captureRoboImage(filePath = "../screenshots/greeting.png")
   }
 }
