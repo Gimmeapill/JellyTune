@@ -12,13 +12,69 @@ JellyTune is a sleek, lightweight, open-source audio client designed specificall
 
 ---
 
-## 📸 Screenshots
+## 📸 Project Gallery
 
-| 🖥️ Login Setup | 🎵 Main Library | 🎧 Now Playing |
-| :---: | :---: | :---: |
-| <img src="screenshots/login.png" width="220" alt="Login & Connection Setup"> | <img src="screenshots/library.png" width="220" alt="Caching & Main Library"> | <img src="screenshots/player.png" width="220" alt="Sleek Player Controls"> |
+Browse the high-fidelity user interface and rich features of JellyTune:
 
-*💡 **How to add screenshots:** Simply drop your customized app screenshots into the `/screenshots` directory at the project root with the names `login.png`, `library.png`, and `player.png`, and they will automatically show up above when browsing this repository on GitHub! (Existing test/mockup screenshot can be viewed at [screenshots/greeting.png](screenshots/greeting.png))*
+<p align="center">
+  <table align="center" cellspacing="10" cellpadding="10" border="0">
+    <tr>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/01_artists_explorer.png" alt="Artists Explorer" width="100%"><br>
+        <sub><b>Rounded Artist Avatars</b></sub>
+      </td>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/02_albums_explorer_various.png" alt="Albums Grid Explorer" width="100%"><br>
+        <sub><b>Responsive Album Grid</b></sub>
+      </td>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/03_albums_explorer_alphabetical.png" alt="Alphabetical Albums" width="100%"><br>
+        <sub><b>Z-A Grid Navigation</b></sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/04_tracks_list.png" alt="Active Tracks Tab" width="100%"><br>
+        <sub><b>Direct Tracks Explorer</b></sub>
+      </td>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/05_album_details_acid_bath.png" alt="Acid Bath Listing" width="100%"><br>
+        <sub><b>Detailed Tracks Registry</b></sub>
+      </td>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/06_album_details_ozric_tentacles.png" alt="Lotus Unfolding Details" width="100%"><br>
+        <sub><b>Custom Active Album Card</b></sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/07_playing_overlay_background.png" alt="Streaming Player Overlay" width="100%"><br>
+        <sub><b>Full Artwork Hero Player</b></sub>
+      </td>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/08_settings_caching_storage.png" alt="Offline Memory Management" width="100%"><br>
+        <sub><b>Offline Cache Controls</b></sub>
+      </td>
+      <td align="center" valign="top" width="31%">
+        <img src="screenshots/09_settings_playback_about.png" alt="Audio Normalization Settings" width="100%"><br>
+        <sub><b>Audio Tweaks & About Build</b></sub>
+      </td>
+    </tr>
+  </table>
+</p>
+
+*💡 **How to link these screenshots on GitHub:** Simply drag and drop your local screenshots into the `/screenshots` directory at the project root, renaming each file to match its respective spot in the gallery:*
+1. `01_artists_explorer.png`
+2. `02_albums_explorer_various.png`
+3. `03_albums_explorer_alphabetical.png`
+4. `04_tracks_list.png`
+5. `05_album_details_acid_bath.png`
+6. `06_album_details_ozric_tentacles.png`
+7. `07_playing_overlay_background.png`
+8. `08_settings_caching_storage.png`
+9. `09_settings_playback_about.png`
+
+Once placed, they will render beautifully when browsing your repository on GitHub!
 
 ---
 
