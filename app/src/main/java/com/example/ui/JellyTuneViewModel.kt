@@ -383,10 +383,25 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             } else {
                 _isLoading.value = true
                 try {
-                    val albumsJob = launch { _artistAlbums.value = repository.getAlbums(artist.id) }
-                    val songsJob = launch { _artistSongs.value = repository.getSongs(artist.id) }
-                    albumsJob.join()
-                    songsJob.join()
+                    val serverAlbums = repository.getAlbums(artist.id)
+                    val serverSongs = repository.getSongs(artist.id)
+
+                    if (serverAlbums.isEmpty() && serverSongs.isEmpty()) {
+                        _artistSongs.value = _songs.value.filter { song ->
+                            song.albumArtist?.equals(artist.name, ignoreCase = true) == true ||
+                            song.artists?.any { it.equals(artist.name, ignoreCase = true) } == true ||
+                            song.artistItems?.any { it.name.equals(artist.name, ignoreCase = true) } == true
+                        }
+
+                        _artistAlbums.value = _albums.value.filter { album ->
+                            album.albumArtist?.equals(artist.name, ignoreCase = true) == true ||
+                            album.artists?.any { it.equals(artist.name, ignoreCase = true) } == true ||
+                            album.artistItems?.any { it.name.equals(artist.name, ignoreCase = true) } == true
+                        }
+                    } else {
+                        _artistAlbums.value = serverAlbums
+                        _artistSongs.value = serverSongs
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 } finally {

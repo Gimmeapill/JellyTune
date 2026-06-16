@@ -279,9 +279,36 @@ class JellyfinRepository(private val context: Context) {
                     }
                 }
 
-                return allArtists.filter { artist ->
+                val matchedArtists = allArtists.filter { artist ->
                     artist.id in artistIds || artist.name.trim().lowercase() in artistNames
+                }.toMutableList()
+
+                val matchedNames = matchedArtists.map { it.name.trim().lowercase() }.toMutableSet()
+                val allSourceItems = albums + songs
+                for (item in allSourceItems) {
+                    val originalNames = mutableListOf<String>()
+                    item.albumArtist?.let { originalNames.add(it) }
+                    item.artists?.let { originalNames.addAll(it) }
+                    item.artistItems?.map { it.name }?.let { originalNames.addAll(it) }
+
+                    for (name in originalNames) {
+                        val trimmedLower = name.trim().lowercase()
+                        if (trimmedLower.isNotEmpty() && trimmedLower in artistNames && trimmedLower !in matchedNames) {
+                            val originalId = item.artistItems?.firstOrNull { it.name.trim().lowercase() == trimmedLower }?.id
+                                ?: "virtual_art_${trimmedLower.hashCode().coerceAtLeast(0)}"
+                            matchedArtists.add(
+                                JellyfinItem(
+                                    id = originalId,
+                                    name = name,
+                                    type = "MusicArtist"
+                                )
+                            )
+                            matchedNames.add(trimmedLower)
+                        }
+                    }
                 }
+
+                return matchedArtists.distinctBy { it.name.trim().lowercase() }.sortedBy { it.name }
             }
         } catch (e: Exception) {
             android.util.Log.e("JellyfinRepository", "getArtists failed: ${e.message}", e)
@@ -350,7 +377,7 @@ class JellyfinRepository(private val context: Context) {
                         val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", null, minDateLastSaved = minDate)
                         result.getOrDefault(emptyList())
                     }
-                    syncSongsFavoriteState(songs)
+                    if (forceFull) syncSongsFavoriteState(songs)
                     return songs
                 } else {
                     // Query and cache each library folder separately to prevent cache corruption, cross-talk, and delta-sync loss of items
@@ -370,7 +397,7 @@ class JellyfinRepository(private val context: Context) {
                         }
                         deferreds.awaitAll().flatten().distinctBy { it.id }
                     }
-                    syncSongsFavoriteState(songs)
+                    if (forceFull) syncSongsFavoriteState(songs)
                     return songs
                 }
             } else {
@@ -378,7 +405,7 @@ class JellyfinRepository(private val context: Context) {
                     val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId, minDateLastSaved = minDate)
                     result.getOrDefault(emptyList())
                 }
-                syncSongsFavoriteState(songs)
+                if (forceFull) syncSongsFavoriteState(songs)
                 return songs
             }
         } catch (e: Exception) {
@@ -801,15 +828,6 @@ class JellyfinRepository(private val context: Context) {
                     durationMs = song.durationMs
                 )
                 favoriteDao.insertFavorite(fav)
-            } else if (!isServerFav && isLocalFav) {
-                // Remove local favorite IF it is older than 2 minutes (protects newly-added offline favorites)
-                val localFav = currentLocalFavs.firstOrNull { it.songId == song.id }
-                if (localFav != null) {
-                    val ageMs = System.currentTimeMillis() - localFav.addedAt
-                    if (ageMs > 120_000) {
-                        favoriteDao.deleteFavorite(song.id)
-                    }
-                }
             }
         }
     }
