@@ -27,6 +27,7 @@ data class JellyfinItem(
     @Json(name = "Id") val id: String = "",
     @Json(name = "Name") val name: String = "",
     @Json(name = "Type") val type: String = "", // "MusicAlbum", "MusicArtist", "Audio", "Playlist"
+    @Json(name = "CollectionType") val collectionType: String? = null,
     @Json(name = "Album") val albumName: String? = null,
     @Json(name = "AlbumId") val albumId: String? = null,
     @Json(name = "Artists") val artists: List<String>? = null,

@@ -87,12 +87,12 @@ class JellyfinClient {
     ): Result<List<JellyfinItem>> = withContext(Dispatchers.IO) {
         val sanitizedUrl = sanitizeUrl(serverUrl)
 
-        var queryUrl = "$sanitizedUrl/Users/$userId/Items?includeItemTypes=$itemType&recursive=true&fields=PrimaryImageAspectRatio,UserData,ProductionYear,IndexNumber,ParentIndexNumber&limit=10000"
+        var queryUrl = "$sanitizedUrl/Users/$userId/Items?includeItemTypes=$itemType&recursive=true&fields=PrimaryImageAspectRatio,UserData,ProductionYear,IndexNumber,ParentIndexNumber,ArtistItems,Artists&limit=10000"
         if (parentId != null) {
             queryUrl += "&parentId=$parentId"
         }
         if (filters != null) {
-            queryUrl += "&filters=$filters"
+            queryUrl += "&Filters=$filters&filters=$filters"
         }
         if (minDateLastSaved != null) {
             queryUrl += "&minDateLastSaved=$minDateLastSaved"
@@ -158,7 +158,7 @@ class JellyfinClient {
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val sanitizedUrl = sanitizeUrl(serverUrl)
         val url = "$sanitizedUrl/Users/$userId/FavoriteItems/$itemId"
-        val body = if (isFavorite) "".toRequestBody(null) else null
+        val body = if (isFavorite) "{}".toRequestBody(jsonMediaType) else null
         val request = Request.Builder()
             .url(url)
             .method(if (isFavorite) "POST" else "DELETE", body)
@@ -174,6 +174,41 @@ class JellyfinClient {
                 } else {
                     Result.failure(IOException("Server error toggleFavoriteOnServer: ${response.code}"))
                 }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchUserViews(
+        serverUrl: String,
+        token: String,
+        userId: String
+    ): Result<List<JellyfinItem>> = withContext(Dispatchers.IO) {
+        val sanitizedUrl = sanitizeUrl(serverUrl)
+        val queryUrl = "$sanitizedUrl/Users/$userId/Views"
+
+        val request = Request.Builder()
+            .url(queryUrl)
+            .get()
+            .addHeader("X-MediaBrowser-Token", token)
+            .addHeader("X-Emby-Token", token)
+            .addHeader("Authorization", "MediaBrowser Token=\"$token\"")
+            .addHeader("Accept", "application/json")
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException("Server error: ${response.code}"))
+                }
+                val source = response.body?.source()
+                    ?: return@withContext Result.failure(IOException("Empty response body"))
+
+                val responseObj = itemJsonAdapter.fromJson(source)
+                    ?: return@withContext Result.failure(IOException("Failed to parse user views"))
+
+                Result.success(responseObj.items)
             }
         } catch (e: Exception) {
             Result.failure(e)

@@ -8,6 +8,9 @@ import com.example.data.database.LocalFavorite
 import com.example.data.jellyfin.JellyfinClient
 import com.example.data.jellyfin.JellyfinItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,8 +53,17 @@ class JellyfinRepository(private val context: Context) {
     private val client = JellyfinClient()
     private val okHttpClient = OkHttpClient()
 
+    private val prefs = context.getSharedPreferences("jellytune_prefs", Context.MODE_PRIVATE)
+
     private val _activeServer = MutableStateFlow<JellyfinServer?>(null)
     val activeServer: StateFlow<JellyfinServer?> = _activeServer.asStateFlow()
+
+    // Library selection flows
+    private val _discoveredLibraries = MutableStateFlow<List<JellyfinItem>>(emptyList())
+    val discoveredLibraries: StateFlow<List<JellyfinItem>> = _discoveredLibraries.asStateFlow()
+
+    private val _selectedLibraryIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedLibraryIds: StateFlow<Set<String>> = _selectedLibraryIds.asStateFlow()
 
     // Flow definitions for cached items and favorites
     val cachedSongs: Flow<List<CachedSong>> = cachedSongDao.getAllCachedSongsFlow()
@@ -68,6 +80,26 @@ class JellyfinRepository(private val context: Context) {
                     serverDao.getActiveServer()
                 }
                 _activeServer.value = active
+                if (active != null) {
+                    // Pre-populate libraries from shared preferences
+                    val libsJson = prefs.getString("discovered_libs_${active.serverUrl}_${active.userId}", null)
+                    if (libsJson != null) {
+                        try {
+                            val savedLibs = listAdapter.fromJson(libsJson) ?: emptyList()
+                            _discoveredLibraries.value = savedLibs
+                            val savedSelected = prefs.getStringSet("selected_library_ids_${active.serverUrl}_${active.userId}", null)
+                            if (savedSelected != null) {
+                                _selectedLibraryIds.value = savedSelected.intersect(savedLibs.map { it.id }.toSet())
+                            } else {
+                                _selectedLibraryIds.value = savedLibs.map { it.id }.toSet()
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                    // Fetch latest libraries asynchronously
+                    fetchAndStoreLibraries()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -93,6 +125,7 @@ class JellyfinRepository(private val context: Context) {
                 serverDao.insertServer(server)
             }
             _activeServer.value = server
+            fetchAndStoreLibraries()
             return Result.success(server)
         }
         return Result.failure(authResult.exceptionOrNull() ?: java.io.IOException("Authentication failed"))
@@ -105,6 +138,8 @@ class JellyfinRepository(private val context: Context) {
                 serverDao.deleteServer(current.serverUrl)
             }
             _activeServer.value = null
+            _discoveredLibraries.value = emptyList()
+            _selectedLibraryIds.value = emptySet()
         }
     }
 
@@ -117,6 +152,80 @@ class JellyfinRepository(private val context: Context) {
             userId = "demo_user",
             deviceId = "demo_device_id"
         )
+        val demoLibs = listOf(
+            JellyfinItem("lib_demo_1", "Main Collection", "CollectionFolder"),
+            JellyfinItem("lib_demo_2", "Hi-Res Collection", "CollectionFolder")
+        )
+        _discoveredLibraries.value = demoLibs
+        _selectedLibraryIds.value = demoLibs.map { it.id }.toSet()
+    }
+
+    suspend fun fetchAndStoreLibraries(): List<JellyfinItem> {
+        if (isDemo()) {
+            val demoLibs = listOf(
+                JellyfinItem("lib_demo_1", "Main Collection", "CollectionFolder"),
+                JellyfinItem("lib_demo_2", "Hi-Res Collection", "CollectionFolder")
+            )
+            _discoveredLibraries.value = demoLibs
+            _selectedLibraryIds.value = prefs.getStringSet("selected_library_ids_demo", null) ?: demoLibs.map { it.id }.toSet()
+            return demoLibs
+        }
+        val server = _activeServer.value ?: return emptyList()
+        val result = client.fetchUserViews(server.serverUrl, server.token, server.userId)
+        if (result.isSuccess) {
+            val allViews = result.getOrNull() ?: emptyList()
+            var musicLibs = allViews.filter { it.collectionType.equals("music", ignoreCase = true) }
+            if (musicLibs.isEmpty()) {
+                musicLibs = allViews.filter { 
+                    it.collectionType.equals("audio", ignoreCase = true) || 
+                    it.name.contains("music", ignoreCase = true) || 
+                    it.name.contains("audio", ignoreCase = true)
+                }
+            }
+            if (musicLibs.isEmpty()) {
+                musicLibs = allViews
+            }
+            
+            _discoveredLibraries.value = musicLibs
+            
+            val saved = prefs.getStringSet("selected_library_ids_${server.serverUrl}_${server.userId}", null)
+            if (saved != null) {
+                _selectedLibraryIds.value = saved.intersect(musicLibs.map { it.id }.toSet())
+            } else {
+                _selectedLibraryIds.value = musicLibs.map { it.id }.toSet()
+            }
+            
+            val libsJson = listAdapter.toJson(musicLibs)
+            prefs.edit()
+                .putString("discovered_libs_${server.serverUrl}_${server.userId}", libsJson)
+                .putStringSet("selected_library_ids_${server.serverUrl}_${server.userId}", _selectedLibraryIds.value)
+                .apply()
+            
+            return musicLibs
+        }
+        return emptyList()
+    }
+
+    fun toggleLibrarySelected(libraryId: String) {
+        val server = _activeServer.value
+        val isDemo = isDemo()
+        val current = _selectedLibraryIds.value.toMutableSet()
+        if (current.contains(libraryId)) {
+            if (current.size > 1) {
+                current.remove(libraryId)
+            }
+        } else {
+            current.add(libraryId)
+        }
+        _selectedLibraryIds.value = current
+        
+        val editor = prefs.edit()
+        if (isDemo) {
+            editor.putStringSet("selected_library_ids_demo", current)
+        } else if (server != null) {
+            editor.putStringSet("selected_library_ids_${server.serverUrl}_${server.userId}", current)
+        }
+        editor.apply()
     }
 
     // Check if current server is Demo
@@ -134,8 +243,49 @@ class JellyfinRepository(private val context: Context) {
     suspend fun getArtists(forceFull: Boolean = false): List<JellyfinItem> {
         if (isDemo()) return getDemoArtists()
         val server = _activeServer.value ?: return emptyList()
-        return fetchWithCache(server, "getArtists", null, forceFull) { minDate ->
-            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicArtist", minDateLastSaved = minDate).getOrDefault(emptyList())
+        try {
+            // Fetch all artists globally which is the only reliable way to fetch MusicArtists without getting blocked by parentId folder limits
+            val allArtists = fetchWithCache(server, "getArtists", null, forceFull) { minDate ->
+                client.fetchItems(server.serverUrl, server.token, server.userId, "MusicArtist", minDateLastSaved = minDate)
+                    .getOrDefault(emptyList())
+            }
+
+            val selected = _selectedLibraryIds.value
+            if (selected.isEmpty()) {
+                return allArtists
+            } else {
+                // To filter artists by selected libraries, we match them against the artists present on the selected libraries' albums and songs
+                val albums = getAlbums(parentId = null, forceFull = false)
+                val songs = getSongs(parentId = null, forceFull = false)
+
+                val artistNames = mutableSetOf<String>()
+                val artistIds = mutableSetOf<String>()
+
+                for (album in albums) {
+                    album.albumArtist?.let { artistNames.add(it.trim().lowercase()) }
+                    album.artists?.forEach { artistNames.add(it.trim().lowercase()) }
+                    album.artistItems?.forEach { item ->
+                        artistNames.add(item.name.trim().lowercase())
+                        if (item.id.isNotEmpty()) artistIds.add(item.id)
+                    }
+                }
+
+                for (song in songs) {
+                    song.albumArtist?.let { artistNames.add(it.trim().lowercase()) }
+                    song.artists?.forEach { artistNames.add(it.trim().lowercase()) }
+                    song.artistItems?.forEach { item ->
+                        artistNames.add(item.name.trim().lowercase())
+                        if (item.id.isNotEmpty()) artistIds.add(item.id)
+                    }
+                }
+
+                return allArtists.filter { artist ->
+                    artist.id in artistIds || artist.name.trim().lowercase() in artistNames
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinRepository", "getArtists failed: ${e.message}", e)
+            return emptyList()
         }
     }
 
@@ -153,23 +303,88 @@ class JellyfinRepository(private val context: Context) {
             return all.filter { it.albumArtist == name }
         }
         val server = _activeServer.value ?: return emptyList()
-        return fetchWithCache(server, "getAlbums", parentId, forceFull) { minDate ->
-            client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", parentId, minDateLastSaved = minDate).getOrDefault(emptyList())
+        try {
+            if (parentId == null) {
+                val selected = _selectedLibraryIds.value
+                if (selected.isEmpty()) {
+                    return fetchWithCache(server, "getAlbums", null, forceFull) { minDate ->
+                        client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", null, minDateLastSaved = minDate).getOrDefault(emptyList())
+                    }
+                } else {
+                    // Query and cache each library folder separately to prevent cache corruption, cross-talk, and delta-sync loss of items
+                    return coroutineScope {
+                        val deferreds = selected.map { libId ->
+                            async {
+                                try {
+                                    fetchWithCache(server, "getAlbums", libId, forceFull) { minDate ->
+                                        client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", parentId = libId, minDateLastSaved = minDate).getOrDefault(emptyList())
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("JellyfinRepository", "Error fetching albums for library $libId: ${e.message}")
+                                    emptyList()
+                                }
+                            }
+                        }
+                        deferreds.awaitAll().flatten().distinctBy { it.id }
+                    }
+                }
+            } else {
+                return fetchWithCache(server, "getAlbums", parentId, forceFull) { minDate ->
+                    client.fetchItems(server.serverUrl, server.token, server.userId, "MusicAlbum", parentId, minDateLastSaved = minDate).getOrDefault(emptyList())
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinRepository", "getAlbums failed: ${e.message}", e)
+            return emptyList()
         }
     }
 
     suspend fun getSongs(parentId: String? = null, forceFull: Boolean = false): List<JellyfinItem> {
         if (isDemo()) return getDemoSongs(parentId)
         val server = _activeServer.value ?: return emptyList()
-        val songs = fetchWithCache(server, "getSongs", parentId, forceFull) { minDate ->
-            val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId, minDateLastSaved = minDate)
-            if (result.isFailure) {
-                android.util.Log.e("JellyfinRepository", "getSongs failed: ${result.exceptionOrNull()?.message}")
+        try {
+            if (parentId == null) {
+                val selected = _selectedLibraryIds.value
+                if (selected.isEmpty()) {
+                    val songs = fetchWithCache(server, "getSongs", null, forceFull) { minDate ->
+                        val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", null, minDateLastSaved = minDate)
+                        result.getOrDefault(emptyList())
+                    }
+                    syncSongsFavoriteState(songs)
+                    return songs
+                } else {
+                    // Query and cache each library folder separately to prevent cache corruption, cross-talk, and delta-sync loss of items
+                    val songs = coroutineScope {
+                        val deferreds = selected.map { libId ->
+                            async {
+                                try {
+                                    fetchWithCache(server, "getSongs", libId, forceFull) { minDate ->
+                                        val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId = libId, minDateLastSaved = minDate)
+                                        result.getOrDefault(emptyList())
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("JellyfinRepository", "Error fetching songs for library $libId: ${e.message}")
+                                    emptyList()
+                                }
+                            }
+                        }
+                        deferreds.awaitAll().flatten().distinctBy { it.id }
+                    }
+                    syncSongsFavoriteState(songs)
+                    return songs
+                }
+            } else {
+                val songs = fetchWithCache(server, "getSongs", parentId, forceFull) { minDate ->
+                    val result = client.fetchItems(server.serverUrl, server.token, server.userId, "Audio", parentId, minDateLastSaved = minDate)
+                    result.getOrDefault(emptyList())
+                }
+                syncSongsFavoriteState(songs)
+                return songs
             }
-            result.getOrDefault(emptyList())
+        } catch (e: Exception) {
+            android.util.Log.e("JellyfinRepository", "getSongs failed: ${e.message}", e)
+            return emptyList()
         }
-        syncSongsFavoriteState(songs)
-        return songs
     }
 
     private suspend fun fetchWithCache(
@@ -586,6 +801,15 @@ class JellyfinRepository(private val context: Context) {
                     durationMs = song.durationMs
                 )
                 favoriteDao.insertFavorite(fav)
+            } else if (!isServerFav && isLocalFav) {
+                // Remove local favorite IF it is older than 2 minutes (protects newly-added offline favorites)
+                val localFav = currentLocalFavs.firstOrNull { it.songId == song.id }
+                if (localFav != null) {
+                    val ageMs = System.currentTimeMillis() - localFav.addedAt
+                    if (ageMs > 120_000) {
+                        favoriteDao.deleteFavorite(song.id)
+                    }
+                }
             }
         }
     }

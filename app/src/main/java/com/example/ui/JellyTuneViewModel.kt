@@ -49,6 +49,15 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     // Saved preferences configurations
     private val prefs = application.getSharedPreferences("jellytune_prefs", android.content.Context.MODE_PRIVATE)
 
+    // Exposed Music Libraries
+    val discoveredLibraries = repository.discoveredLibraries
+    val selectedLibraryIds = repository.selectedLibraryIds
+
+    fun toggleLibrarySelected(libraryId: String) {
+        repository.toggleLibrarySelected(libraryId)
+        refreshLibrary()
+    }
+
     private val networkMonitor = com.example.util.NetworkMonitor(application)
     
     private val _offlineMode = MutableStateFlow(prefs.getBoolean("offline_mode", false))
