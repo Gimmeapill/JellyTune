@@ -38,7 +38,8 @@ data class JellyfinItem(
     @Json(name = "UserData") val userData: UserData? = null,
     @Json(name = "ProductionYear") val productionYear: Int? = null,
     @Json(name = "IndexNumber") val indexNumber: Int? = null,
-    @Json(name = "ParentIndexNumber") val parentIndexNumber: Int? = null
+    @Json(name = "ParentIndexNumber") val parentIndexNumber: Int? = null,
+    @Json(name = "DateCreated") val dateCreated: String? = null
 ) {
     val durationMs: Long
         get() = (runTimeTicks ?: 0L) / 10000L // 10,000 ticks per millisecond

@@ -51,6 +51,8 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Download
@@ -70,6 +72,8 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import com.example.ui.SortCriteria
+import com.example.ui.SortDirection
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -439,6 +443,86 @@ fun ExploreHeroCard(viewModel: JellyTuneViewModel) {
 // --- EXPLORE VIEW & THE SUB-TABS (ALBUM, ARTIST, TRACKS) ---
 
 @Composable
+fun SortSelectionBar(
+    criteria: SortCriteria,
+    direction: SortDirection,
+    onCriteriaSelected: (SortCriteria) -> Unit,
+    onDirectionToggle: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 4.dp, horizontal = 8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Sort,
+                contentDescription = "Sort Options",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            val friendlyCriteriaName = when (criteria) {
+                SortCriteria.ALPHABETICAL -> "Alphabetical"
+                SortCriteria.DATE -> "Date / Year"
+                SortCriteria.DATE_ADDED -> "Date Added"
+            }
+            Text(
+                text = "Sort: $friendlyCriteriaName",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        IconButton(
+            onClick = onDirectionToggle,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                imageVector = if (direction == SortDirection.ASCENDING) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                contentDescription = "Toggle Sort Direction",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.secondary
+            )
+        }
+
+        if (expanded) {
+            androidx.compose.material3.DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                SortCriteria.values().forEach { crit ->
+                    val label = when (crit) {
+                        SortCriteria.ALPHABETICAL -> "Alphabetical"
+                        SortCriteria.DATE -> "Date / Year"
+                        SortCriteria.DATE_ADDED -> "Date Added"
+                    }
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                        onClick = {
+                            onCriteriaSelected(crit)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ExploreTab(viewModel: JellyTuneViewModel) {
     var subTab by remember { mutableIntStateOf(0) }
     val isLoading by viewModel.isLoading.collectAsState()
@@ -493,6 +577,38 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
                 )
             }
         }
+
+        val sortCriteria: SortCriteria
+        val sortDirection: SortDirection
+        val onSortChanged: (SortCriteria, SortDirection) -> Unit
+
+        when (subTab) {
+            0 -> {
+                sortCriteria = viewModel.artistsSortCriteria.collectAsState().value
+                sortDirection = viewModel.artistsSortDirection.collectAsState().value
+                onSortChanged = { criteria, direction -> viewModel.setArtistsSort(criteria, direction) }
+            }
+            1 -> {
+                sortCriteria = viewModel.albumsSortCriteria.collectAsState().value
+                sortDirection = viewModel.albumsSortDirection.collectAsState().value
+                onSortChanged = { criteria, direction -> viewModel.setAlbumsSort(criteria, direction) }
+            }
+            else -> {
+                sortCriteria = viewModel.songsSortCriteria.collectAsState().value
+                sortDirection = viewModel.songsSortDirection.collectAsState().value
+                onSortChanged = { criteria, direction -> viewModel.setSongsSort(criteria, direction) }
+            }
+        }
+
+        SortSelectionBar(
+            criteria = sortCriteria,
+            direction = sortDirection,
+            onCriteriaSelected = { criteria -> onSortChanged(criteria, sortDirection) },
+            onDirectionToggle = {
+                val newDirection = if (sortDirection == SortDirection.ASCENDING) SortDirection.DESCENDING else SortDirection.ASCENDING
+                onSortChanged(sortCriteria, newDirection)
+            }
+        )
 
         Box(modifier = Modifier.fillMaxSize()) {
             when (subTab) {
@@ -1525,29 +1641,140 @@ fun FavoritesTab(viewModel: JellyTuneViewModel) {
 }
 
 @Composable
-fun CachedTab(viewModel: JellyTuneViewModel) {
-    val cachedList by viewModel.cachedSongs.collectAsState(initial = emptyList())
+fun CachedArtistItem(
+    artistName: String,
+    songs: List<com.example.data.database.CachedSong>,
+    onPlayAll: () -> Unit,
+    onPlaySong: (com.example.data.database.CachedSong) -> Unit,
+    onDeleteSong: (String) -> Unit,
+    viewModel: JellyTuneViewModel
+) {
+    var expanded by remember { mutableStateOf(false) }
 
-    if (cachedList.isEmpty()) {
-        EmptyStateBlock("No cached offline songs.\nWe will cache tracks as you stream, or you can manually save tracks from the grid.")
-        return
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
     ) {
-        items(cachedList) { song ->
-            val mappedSongItem = song.toJellyfinItem()
-            val playbackState = viewModel.playbackState.collectAsState().value
-            val isCurrent = mappedSongItem.id == playbackState.currentSong?.id
-
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .fillParentMaxWidth()
-                    .clickable { viewModel.playCachedSong(song) }
-                    .padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = artistName,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "${songs.size} Cached Tracks",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+
+                IconButton(onClick = onPlayAll) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play All by Artist",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+                    songs.forEach { song ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPlaySong(song) }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = song.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = song.album,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                            IconButton(
+                                onClick = { onDeleteSong(song.songId) },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Delete Copy",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CachedAlbumItem(
+    albumName: String,
+    songs: List<com.example.data.database.CachedSong>,
+    onPlayAll: () -> Unit,
+    onPlaySong: (com.example.data.database.CachedSong) -> Unit,
+    onDeleteSong: (String) -> Unit,
+    viewModel: JellyTuneViewModel
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val representativeSong = songs.firstOrNull()
+    val artistName = representativeSong?.artist ?: "Unknown Artist"
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
             ) {
                 Box(
                     modifier = Modifier
@@ -1556,44 +1783,253 @@ fun CachedTab(viewModel: JellyTuneViewModel) {
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(viewModel.getArtworkUrl(song.songId))
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (representativeSong != null) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(viewModel.getArtworkUrl(representativeSong.songId))
+                                .build(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Album,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = song.title,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.weight(1f, fill = false),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                     Text(
-                        text = "${song.artist} • ${song.album}",
+                        text = albumName,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "$artistName • ${songs.size} Tracks",
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (isCurrent) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                IconButton(onClick = { viewModel.deleteSongFromCache(song.songId) }) {
+                IconButton(onClick = onPlayAll) {
                     Icon(
-                        imageVector = Icons.Default.Close,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        contentDescription = "Delete Copy"
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play All Album Tracks",
+                        tint = MaterialTheme.colorScheme.primary
                     )
+                }
+            }
+
+            AnimatedVisibility(visible = expanded) {
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
+                    songs.forEach { song ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPlaySong(song) }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = song.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            IconButton(
+                                onClick = { onDeleteSong(song.songId) },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Delete Copy",
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CachedTab(viewModel: JellyTuneViewModel) {
+    val cachedList by viewModel.cachedSongs.collectAsState(initial = emptyList())
+    var cachedSubTab by remember { mutableIntStateOf(0) } // 0 = Artists, 1 = Albums, 2 = Songs
+
+    if (cachedList.isEmpty()) {
+        EmptyStateBlock("No cached offline songs.\nWe will cache tracks as you stream, or you can manually save tracks from the grid.")
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(
+            selectedTabIndex = cachedSubTab,
+            containerColor = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onBackground,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[cachedSubTab]),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        ) {
+            val subTabs = listOf("Artists", "Albums", "Songs")
+            subTabs.forEachIndexed { idx, label ->
+                Tab(
+                    selected = cachedSubTab == idx,
+                    onClick = { cachedSubTab = idx },
+                    text = {
+                        Text(
+                            label,
+                            fontWeight = if (cachedSubTab == idx) FontWeight.Bold else FontWeight.Medium,
+                            color = if (cachedSubTab == idx) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        )
+                    }
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            when (cachedSubTab) {
+                0 -> {
+                    // Artists
+                    val groupedByArtist = remember(cachedList) { cachedList.groupBy { it.artist } }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp)
+                    ) {
+                        items(groupedByArtist.keys.toList()) { artistName ->
+                            val songs = groupedByArtist[artistName] ?: emptyList()
+                            CachedArtistItem(
+                                artistName = artistName,
+                                songs = songs,
+                                onPlayAll = {
+                                    val jellyfinItems = songs.map { it.toJellyfinItem() }
+                                    viewModel.playbackManager.playQueue(jellyfinItems, 0)
+                                },
+                                onPlaySong = { viewModel.playCachedSong(it) },
+                                onDeleteSong = { viewModel.deleteSongFromCache(it) },
+                                viewModel = viewModel
+                            )
+                        }
+                    }
+                }
+                1 -> {
+                    // Albums
+                    val groupedByAlbum = remember(cachedList) { cachedList.groupBy { it.album } }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp)
+                    ) {
+                        items(groupedByAlbum.keys.toList()) { albumName ->
+                            val songs = groupedByAlbum[albumName] ?: emptyList()
+                            CachedAlbumItem(
+                                albumName = albumName,
+                                songs = songs,
+                                onPlayAll = {
+                                    val jellyfinItems = songs.map { it.toJellyfinItem() }
+                                    viewModel.playbackManager.playQueue(jellyfinItems, 0)
+                                },
+                                onPlaySong = { viewModel.playCachedSong(it) },
+                                onDeleteSong = { viewModel.deleteSongFromCache(it) },
+                                viewModel = viewModel
+                            )
+                        }
+                    }
+                }
+                2 -> {
+                    // Songs (classic flat list)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp)
+                    ) {
+                        items(cachedList) { song ->
+                            val mappedSongItem = song.toJellyfinItem()
+                            val playbackState = viewModel.playbackState.collectAsState().value
+                            val isCurrent = mappedSongItem.id == playbackState.currentSong?.id
+
+                            Row(
+                                modifier = Modifier
+                                    .fillParentMaxWidth()
+                                    .clickable { viewModel.playCachedSong(song) }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(viewModel.getArtworkUrl(song.songId))
+                                            .build(),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = song.title,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f, fill = false),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = "${song.artist} • ${song.album}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isCurrent) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                IconButton(onClick = { viewModel.deleteSongFromCache(song.songId) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        contentDescription = "Delete Copy"
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1776,33 +2212,6 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                 androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Offline Mode switch
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Force Offline Mode",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Only display and play tracks stored in your local storage cache.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                    val isOffline by viewModel.offlineMode.collectAsState()
-                    androidx.compose.material3.Switch(
-                        checked = isOffline,
-                        onCheckedChange = { viewModel.setOfflineMode(it) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
                 // Wifi-Only Mode switch
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1837,7 +2246,8 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
 
                 val context = LocalContext.current
                 val availableStorageMb = remember(context) { getAvailableStorageMb(context) }
-                val maxSliderValue = remember(availableStorageMb) { maxOf(2048L, availableStorageMb) }
+                val maxSliderLimitValue = remember(availableStorageMb) { maxOf(2048L, availableStorageMb) }
+                val sliderRangeMax = maxSliderLimitValue.toFloat() + 500f
                 val isUnlimited = maxLimitMb == Long.MAX_VALUE
 
                 Text(
@@ -1853,87 +2263,68 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Unlimited Storage Cache",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                    androidx.compose.material3.Switch(
-                        checked = isUnlimited,
-                        onCheckedChange = { checked ->
-                            if (checked) {
-                                viewModel.setMaxCacheSizeMb(Long.MAX_VALUE)
-                            } else {
-                                val initial = if (maxLimitMb != Long.MAX_VALUE && maxLimitMb <= maxSliderValue) maxLimitMb else 1024L
-                                viewModel.setMaxCacheSizeMb(initial)
-                            }
-                        }
-                    )
+                val sliderValue = if (isUnlimited) {
+                    sliderRangeMax
+                } else {
+                    maxLimitMb.coerceIn(100L, maxSliderLimitValue).toFloat()
                 }
 
-                if (!isUnlimited) {
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    val sliderValue = maxLimitMb.coerceIn(100L, maxSliderValue).toFloat()
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .padding(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Limit: ${if (sliderValue >= 1024L) String.format("%.1f GB", sliderValue / 1024f) else "${sliderValue.toLong()} MB"}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Free space: ${if (availableStorageMb >= 1024L) String.format("%.1f GB", availableStorageMb / 1024f) else "$availableStorageMb MB"}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        androidx.compose.material3.Slider(
-                            value = sliderValue,
-                            onValueChange = { newValue ->
-                                viewModel.setMaxCacheSizeMb(newValue.toLong())
-                            },
-                            valueRange = 100f..maxSliderValue.toFloat(),
-                            modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                            shape = RoundedCornerShape(12.dp)
                         )
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Limit: ${if (isUnlimited || sliderValue >= maxSliderLimitValue + 100f) "Unlimited" else if (sliderValue >= 1024f) String.format("%.1f GB", sliderValue / 1024f) else "${sliderValue.toLong()} MB"}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Free space: ${if (availableStorageMb >= 1024L) String.format("%.1f GB", availableStorageMb / 1024f) else "$availableStorageMb MB"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "100 MB",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Text(
-                                text = if (maxSliderValue >= 1024L) String.format("%.1f GB", maxSliderValue / 1024f) else "$maxSliderValue MB",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                        }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    androidx.compose.material3.Slider(
+                        value = sliderValue,
+                        onValueChange = { newValue ->
+                            if (newValue >= maxSliderLimitValue + 100f) {
+                                viewModel.setMaxCacheSizeMb(Long.MAX_VALUE)
+                            } else {
+                                viewModel.setMaxCacheSizeMb(newValue.toLong())
+                            }
+                        },
+                        valueRange = 100f..sliderRangeMax,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "100 MB",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                        Text(
+                            text = "Unlimited",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
                     }
                 }
             }
@@ -2403,13 +2794,13 @@ fun Modifier.drawListScrollbar(
                     val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
                     val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
                     
-                    val barWidth = if (isDragging) 12.dp else 6.dp
+                    val barWidth = if (isDragging) 16.dp else 10.dp
                     val barColor = if (isDragging) color.copy(alpha = 0.85f) else color
                     
                     drawRoundRect(
                         color = barColor,
-                        topLeft = Offset(x = size.width - (barWidth + 2.dp).toPx(), y = scrollbarOffsetY),
-                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
+                        topLeft = Offset(x = size.width - (barWidth + 4.dp).toPx(), y = scrollbarOffsetY),
+                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(40.dp.toPx())),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth.toPx() / 2, barWidth.toPx() / 2)
                     )
                 }
@@ -2419,7 +2810,7 @@ fun Modifier.drawListScrollbar(
             detectDragGestures(
                 onDragStart = { offset ->
                     val width = size.width
-                    if (offset.x >= width - 64.dp.toPx()) {
+                    if (offset.x >= width - 80.dp.toPx()) {
                         isDragging = true
                     }
                 },
@@ -2468,13 +2859,13 @@ fun Modifier.drawGridScrollbar(
                     val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
                     val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
                     
-                    val barWidth = if (isDragging) 12.dp else 6.dp
+                    val barWidth = if (isDragging) 16.dp else 10.dp
                     val barColor = if (isDragging) color.copy(alpha = 0.85f) else color
                     
                     drawRoundRect(
                         color = barColor,
-                        topLeft = Offset(x = size.width - (barWidth + 2.dp).toPx(), y = scrollbarOffsetY),
-                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(24.dp.toPx())),
+                        topLeft = Offset(x = size.width - (barWidth + 4.dp).toPx(), y = scrollbarOffsetY),
+                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(40.dp.toPx())),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth.toPx() / 2, barWidth.toPx() / 2)
                     )
                 }
@@ -2484,7 +2875,7 @@ fun Modifier.drawGridScrollbar(
             detectDragGestures(
                 onDragStart = { offset ->
                     val width = size.width
-                    if (offset.x >= width - 64.dp.toPx()) {
+                    if (offset.x >= width - 80.dp.toPx()) {
                         isDragging = true
                     }
                 },
