@@ -72,7 +72,6 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import com.example.ui.LibraryFilter
 import com.example.ui.SortCriteria
 import com.example.ui.SortDirection
 import androidx.compose.material3.Button
@@ -444,8 +443,10 @@ fun ExploreHeroCard(viewModel: JellyTuneViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SortSelectionBar(
-    currentFilter: LibraryFilter,
-    onFilterSelected: (LibraryFilter) -> Unit,
+    isCachedActive: Boolean,
+    onToggleCached: () -> Unit,
+    isFavoritesActive: Boolean,
+    onToggleFavorites: () -> Unit,
     criteria: SortCriteria,
     direction: SortDirection,
     onCriteriaSelected: (SortCriteria) -> Unit,
@@ -463,24 +464,14 @@ fun SortSelectionBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Filter Chips: All, Cached, Favorites
+            // Filter Chips: Cached, Favorites
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 FilterChip(
-                    selected = currentFilter == LibraryFilter.ALL,
-                    onClick = { onFilterSelected(LibraryFilter.ALL) },
-                    label = { Text("All", style = MaterialTheme.typography.labelMedium) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                )
-
-                FilterChip(
-                    selected = currentFilter == LibraryFilter.CACHED,
-                    onClick = { onFilterSelected(LibraryFilter.CACHED) },
+                    selected = isCachedActive,
+                    onClick = onToggleCached,
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.CloudDone,
@@ -496,8 +487,8 @@ fun SortSelectionBar(
                 )
 
                 FilterChip(
-                    selected = currentFilter == LibraryFilter.FAVORITES,
-                    onClick = { onFilterSelected(LibraryFilter.FAVORITES) },
+                    selected = isFavoritesActive,
+                    onClick = onToggleFavorites,
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Favorite,
@@ -645,7 +636,9 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
         val sortCriteria: SortCriteria
         val sortDirection: SortDirection
         val onSortChanged: (SortCriteria, SortDirection) -> Unit
-        val currentFilter by viewModel.libraryFilter.collectAsState()
+        
+        val isCachedActive by viewModel.filterCached.collectAsState()
+        val isFavoritesActive by viewModel.filterFavorites.collectAsState()
 
         when (subTab) {
             0 -> {
@@ -666,8 +659,10 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
         }
 
         SortSelectionBar(
-            currentFilter = currentFilter,
-            onFilterSelected = { filter -> viewModel.setLibraryFilter(filter) },
+            isCachedActive = isCachedActive,
+            onToggleCached = { viewModel.toggleFilterCached() },
+            isFavoritesActive = isFavoritesActive,
+            onToggleFavorites = { viewModel.toggleFilterFavorites() },
             criteria = sortCriteria,
             direction = sortDirection,
             onCriteriaSelected = { criteria -> onSortChanged(criteria, sortDirection) },

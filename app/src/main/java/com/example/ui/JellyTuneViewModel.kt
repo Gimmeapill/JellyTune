@@ -112,11 +112,18 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _wifiOnlyMode = MutableStateFlow(prefs.getBoolean("wifi_only_mode", false))
     val wifiOnlyMode = _wifiOnlyMode.asStateFlow()
 
-    private val _libraryFilter = MutableStateFlow(LibraryFilter.ALL)
-    val libraryFilter = _libraryFilter.asStateFlow()
+    private val _filterCached = MutableStateFlow(false)
+    val filterCached = _filterCached.asStateFlow()
 
-    fun setLibraryFilter(filter: LibraryFilter) {
-        _libraryFilter.value = filter
+    private val _filterFavorites = MutableStateFlow(false)
+    val filterFavorites = _filterFavorites.asStateFlow()
+
+    fun toggleFilterCached() {
+        _filterCached.value = !_filterCached.value
+    }
+
+    fun toggleFilterFavorites() {
+        _filterFavorites.value = !_filterFavorites.value
     }
 
     fun setOfflineMode(enabled: Boolean) {
@@ -168,28 +175,40 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         playbackManager.openSystemEqualizer(context)
     }
 
+    private val _filterState = combine(_filterCached, _filterFavorites) { c, f -> LibraryFilterState(c, f) }
+
     // Expose filtered view based on offline/cached/favorite filter state
     val displaySongs: StateFlow<List<JellyfinItem>> = combine(
         _songs,
         cachedSongs,
         localFavorites,
         effectiveOfflineMode,
-        _libraryFilter
+        _filterState
     ) { serverSongs, cached, favs, offline, filter ->
-        val list = when {
-            offline || filter == LibraryFilter.CACHED -> {
-                cached.map { it.toJellyfinItem() }
-            }
-            filter == LibraryFilter.FAVORITES -> {
-                val favSongIds = favs.map { it.songId }.toSet()
-                val serverMatching = serverSongs.filter { it.id in favSongIds || it.userData?.isFavorite == true }
+        val isCachedActive = offline || filter.cached
+        val isFavsActive = filter.favorites
+
+        val baseList = if (isCachedActive) {
+            cached.map { it.toJellyfinItem() }
+        } else {
+            serverSongs
+        }
+
+        val list = if (isFavsActive) {
+            val favSongIds = favs.map { it.songId }.toSet()
+            if (isCachedActive) {
+                // Both active: intersect cached and favorites
+                baseList.filter { it.id in favSongIds }
+            } else {
+                // Only favs active
+                val serverMatching = baseList.filter { it.id in favSongIds || it.userData?.isFavorite == true }
                 val extraLocalFavs = favs.filter { fav -> serverMatching.none { it.id == fav.songId } }.map { it.toJellyfinItem() }
                 serverMatching + extraLocalFavs
             }
-            else -> {
-                serverSongs
-            }
+        } else {
+            baseList
         }
+        
         list.sortedWith(
             compareBy<JellyfinItem> { it.albumName ?: "" }
                 .thenBy { it.parentIndexNumber ?: 1 }
@@ -203,34 +222,47 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         cachedSongs,
         localFavorites,
         effectiveOfflineMode,
-        _libraryFilter
+        _filterState
     ) { serverAlbums, cached, favs, offline, filter ->
         val serverSongs = _songs.value
-        when {
-            offline || filter == LibraryFilter.CACHED -> {
-                val cachedAlbumNames = cached.map { it.album }.filter { it.isNotBlank() }.distinct()
-                val cachedSongIds = cached.map { it.songId }.toSet()
-                val matchingServerAlbums = serverAlbums.filter { alb ->
-                    alb.name in cachedAlbumNames || alb.id in cachedSongIds ||
-                    serverSongs.any { it.albumId == alb.id && it.id in cachedSongIds }
-                }
-                val extraAlbums = cachedAlbumNames.filter { albName ->
-                    matchingServerAlbums.none { it.name.equals(albName, ignoreCase = true) }
-                }.map { albName ->
-                    val repSong = cached.firstOrNull { it.album.equals(albName, ignoreCase = true) }
-                    JellyfinItem(
-                        id = repSong?.songId ?: "cached_alb_$albName",
-                        name = albName,
-                        type = "MusicAlbum",
-                        albumArtist = repSong?.artist ?: "Unknown Artist"
-                    )
-                }
-                matchingServerAlbums + extraAlbums
+        val isCachedActive = offline || filter.cached
+        val isFavsActive = filter.favorites
+
+        val baseAlbums = if (isCachedActive) {
+            val cachedAlbumNames = cached.map { it.album }.filter { it.isNotBlank() }.distinct()
+            val cachedSongIds = cached.map { it.songId }.toSet()
+            val matchingServerAlbums = serverAlbums.filter { alb ->
+                alb.name in cachedAlbumNames || alb.id in cachedSongIds ||
+                serverSongs.any { it.albumId == alb.id && it.id in cachedSongIds }
             }
-            filter == LibraryFilter.FAVORITES -> {
-                val favSongIds = favs.map { it.songId }.toSet()
-                val favAlbumNames = favs.map { it.album }.filter { it.isNotBlank() }.distinct()
-                val matchingServerAlbums = serverAlbums.filter { alb ->
+            val extraAlbums = cachedAlbumNames.filter { albName ->
+                matchingServerAlbums.none { it.name.equals(albName, ignoreCase = true) }
+            }.map { albName ->
+                val repSong = cached.firstOrNull { it.album.equals(albName, ignoreCase = true) }
+                JellyfinItem(
+                    id = repSong?.songId ?: "cached_alb_$albName",
+                    name = albName,
+                    type = "MusicAlbum",
+                    albumArtist = repSong?.artist ?: "Unknown Artist"
+                )
+            }
+            matchingServerAlbums + extraAlbums
+        } else {
+            serverAlbums
+        }
+
+        if (isFavsActive) {
+            val favSongIds = favs.map { it.songId }.toSet()
+            val favAlbumNames = favs.map { it.album }.filter { it.isNotBlank() }.distinct()
+            
+            if (isCachedActive) {
+                // Intersect cached albums with favs
+                baseAlbums.filter { alb -> 
+                    alb.userData?.isFavorite == true || alb.name in favAlbumNames ||
+                    serverSongs.any { it.albumId == alb.id && (it.id in favSongIds || it.userData?.isFavorite == true) }
+                }
+            } else {
+                val matchingServerAlbums = baseAlbums.filter { alb ->
                     alb.userData?.isFavorite == true || alb.name in favAlbumNames ||
                     serverSongs.any { it.albumId == alb.id && (it.id in favSongIds || it.userData?.isFavorite == true) }
                 }
@@ -247,9 +279,8 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 matchingServerAlbums + extraAlbums
             }
-            else -> {
-                serverAlbums
-            }
+        } else {
+            baseAlbums
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -258,31 +289,47 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         cachedSongs,
         localFavorites,
         effectiveOfflineMode,
-        _libraryFilter
+        _filterState
     ) { serverArtists, cached, favs, offline, filter ->
         val serverSongs = _songs.value
-        when {
-            offline || filter == LibraryFilter.CACHED -> {
-                val cachedArtists = cached.map { it.artist }.filter { it.isNotBlank() }.distinct()
-                val matchingServerArtists = serverArtists.filter { art ->
-                    cachedArtists.any { it.equals(art.name, ignoreCase = true) }
-                }
-                val extraArtists = cachedArtists.filter { artName ->
-                    matchingServerArtists.none { it.name.equals(artName, ignoreCase = true) }
-                }.map { artName ->
-                    val repSong = cached.firstOrNull { it.artist.equals(artName, ignoreCase = true) }
-                    JellyfinItem(
-                        id = repSong?.songId ?: "cached_art_$artName",
-                        name = artName,
-                        type = "MusicArtist"
-                    )
-                }
-                matchingServerArtists + extraArtists
+        val isCachedActive = offline || filter.cached
+        val isFavsActive = filter.favorites
+
+        val baseArtists = if (isCachedActive) {
+            val cachedArtists = cached.map { it.artist }.filter { it.isNotBlank() }.distinct()
+            val matchingServerArtists = serverArtists.filter { art ->
+                cachedArtists.any { it.equals(art.name, ignoreCase = true) }
             }
-            filter == LibraryFilter.FAVORITES -> {
-                val favArtists = favs.map { it.artist }.filter { it.isNotBlank() }.distinct()
-                val favSongIds = favs.map { it.songId }.toSet()
-                val matchingServerArtists = serverArtists.filter { art ->
+            val extraArtists = cachedArtists.filter { artName ->
+                matchingServerArtists.none { it.name.equals(artName, ignoreCase = true) }
+            }.map { artName ->
+                val repSong = cached.firstOrNull { it.artist.equals(artName, ignoreCase = true) }
+                JellyfinItem(
+                    id = repSong?.songId ?: "cached_art_$artName",
+                    name = artName,
+                    type = "MusicArtist"
+                )
+            }
+            matchingServerArtists + extraArtists
+        } else {
+            serverArtists
+        }
+
+        if (isFavsActive) {
+            val favArtists = favs.map { it.artist }.filter { it.isNotBlank() }.distinct()
+            val favSongIds = favs.map { it.songId }.toSet()
+            
+            if (isCachedActive) {
+                baseArtists.filter { art ->
+                    art.userData?.isFavorite == true ||
+                    favArtists.any { it.equals(art.name, ignoreCase = true) } ||
+                    serverSongs.any { s ->
+                        (s.id in favSongIds || s.userData?.isFavorite == true) &&
+                        (s.albumArtist?.equals(art.name, ignoreCase = true) == true || s.artists?.any { it.equals(art.name, ignoreCase = true) } == true)
+                    }
+                }
+            } else {
+                val matchingServerArtists = baseArtists.filter { art ->
                     art.userData?.isFavorite == true ||
                     favArtists.any { it.equals(art.name, ignoreCase = true) } ||
                     serverSongs.any { s ->
@@ -302,9 +349,8 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 matchingServerArtists + extraArtists
             }
-            else -> {
-                serverArtists
-            }
+        } else {
+            baseArtists
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -521,50 +567,45 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         viewModelScope.launch {
-            if (effectiveOfflineMode.value || _libraryFilter.value == LibraryFilter.CACHED) {
+            _isLoading.value = true
+            
+            val isCachedActive = effectiveOfflineMode.value || _filterCached.value
+            val isFavsActive = _filterFavorites.value
+
+            val baseSongs = if (isCachedActive) {
                 val cached = repository.getCachedSongsList()
-                val songs = cached
+                cached
                     .filter { it.album.equals(album.name, ignoreCase = true) || it.songId == album.id }
                     .map { it.toJellyfinItem() }
-                _albumSongs.value = songs.sortedWith(
-                    compareBy<JellyfinItem> { it.parentIndexNumber ?: 1 }
-                        .thenBy { it.indexNumber ?: 0 }
-                        .thenBy { it.name }
-                )
-            } else if (_libraryFilter.value == LibraryFilter.FAVORITES) {
-                _isLoading.value = true
-                val allAlbumSongs = repository.getSongs(album.id)
-                val favs = repository.getLocalFavoritesList()
-                val favSongs = if (allAlbumSongs.isNotEmpty()) {
-                    allAlbumSongs.filter { s -> favs.any { it.songId == s.id } || s.userData?.isFavorite == true }
-                } else {
-                    favs.filter { it.album.equals(album.name, ignoreCase = true) }.map { it.toJellyfinItem() }
-                }
-                _albumSongs.value = favSongs.sortedWith(
-                    compareBy<JellyfinItem> { it.parentIndexNumber ?: 1 }
-                        .thenBy { it.indexNumber ?: 0 }
-                        .thenBy { it.name }
-                )
-                _isLoading.value = false
             } else {
-                _isLoading.value = true
                 val serverSongs = repository.getSongs(album.id)
-                _albumSongs.value = if (serverSongs.isNotEmpty()) {
-                    serverSongs.sortedWith(
-                        compareBy<JellyfinItem> { it.parentIndexNumber ?: 1 }
-                            .thenBy { it.indexNumber ?: 0 }
-                            .thenBy { it.name }
-                    )
-                } else {
+                if (serverSongs.isNotEmpty()) serverSongs else {
                     _songs.value.filter { it.albumName?.equals(album.name, ignoreCase = true) == true }
-                        .sortedWith(
-                            compareBy<JellyfinItem> { it.parentIndexNumber ?: 1 }
-                                .thenBy { it.indexNumber ?: 0 }
-                                .thenBy { it.name }
-                        )
                 }
-                _isLoading.value = false
             }
+
+            val resultSongs = if (isFavsActive) {
+                val favs = repository.getLocalFavoritesList()
+                if (isCachedActive) {
+                    baseSongs.filter { s -> favs.any { it.songId == s.id } }
+                } else {
+                    if (baseSongs.isNotEmpty()) {
+                        baseSongs.filter { s -> favs.any { it.songId == s.id } || s.userData?.isFavorite == true }
+                    } else {
+                        favs.filter { it.album.equals(album.name, ignoreCase = true) }.map { it.toJellyfinItem() }
+                    }
+                }
+            } else {
+                baseSongs
+            }
+
+            _albumSongs.value = resultSongs.sortedWith(
+                compareBy<JellyfinItem> { it.parentIndexNumber ?: 1 }
+                    .thenBy { it.indexNumber ?: 0 }
+                    .thenBy { it.name }
+            )
+            
+            _isLoading.value = false
         }
     }
 
@@ -576,88 +617,81 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         viewModelScope.launch {
-            if (effectiveOfflineMode.value || _libraryFilter.value == LibraryFilter.CACHED) {
-                val cached = repository.getCachedSongsList()
-                val matchingSongs = cached
-                    .filter { it.artist.equals(artist.name, ignoreCase = true) }
-                    .map { it.toJellyfinItem() }
-                    .sortedWith(
-                        compareBy<JellyfinItem> { it.albumName ?: "" }
-                            .thenBy { it.parentIndexNumber ?: 1 }
-                            .thenBy { it.indexNumber ?: 0 }
-                            .thenBy { it.name }
-                    )
-                _artistSongs.value = matchingSongs
+            _isLoading.value = true
+            
+            val isCachedActive = effectiveOfflineMode.value || _filterCached.value
+            val isFavsActive = _filterFavorites.value
 
-                val albumNames = matchingSongs.mapNotNull { it.albumName }.distinct()
-                _artistAlbums.value = albumNames.map { albName ->
-                    _albums.value.find { it.name.equals(albName, ignoreCase = true) }
-                        ?: JellyfinItem(
-                            id = matchingSongs.firstOrNull { it.albumName.equals(albName, ignoreCase = true) }?.id ?: "cached_alb",
-                            name = albName,
-                            type = "MusicAlbum",
-                            albumArtist = artist.name
-                        )
-                }
-            } else if (_libraryFilter.value == LibraryFilter.FAVORITES) {
-                _isLoading.value = true
-                val favs = repository.getLocalFavoritesList()
-                val matchingFavs = favs.filter { it.artist.equals(artist.name, ignoreCase = true) }.map { it.toJellyfinItem() }
-                _artistSongs.value = matchingFavs.sortedWith(
-                    compareBy<JellyfinItem> { it.albumName ?: "" }
-                        .thenBy { it.parentIndexNumber ?: 1 }
-                        .thenBy { it.indexNumber ?: 0 }
-                        .thenBy { it.name }
-                )
-                val albumNames = matchingFavs.mapNotNull { it.albumName }.distinct()
-                _artistAlbums.value = albumNames.map { albName ->
-                    _albums.value.find { it.name.equals(albName, ignoreCase = true) }
-                        ?: JellyfinItem(
-                            id = matchingFavs.firstOrNull { it.albumName.equals(albName, ignoreCase = true) }?.id ?: "fav_alb",
-                            name = albName,
-                            type = "MusicAlbum",
-                            albumArtist = artist.name
-                        )
-                }
-                _isLoading.value = false
-            } else {
-                _isLoading.value = true
+            var serverSongs = emptyList<JellyfinItem>()
+            var serverAlbums = emptyList<JellyfinItem>()
+
+            if (!isCachedActive) {
                 try {
-                    val serverAlbums = repository.getAlbums(artist.id)
-                    val serverSongs = repository.getSongs(artist.id)
-
+                    serverAlbums = repository.getAlbums(artist.id)
+                    serverSongs = repository.getSongs(artist.id)
                     if (serverAlbums.isEmpty() && serverSongs.isEmpty()) {
-                        _artistSongs.value = _songs.value.filter { song ->
+                        serverSongs = _songs.value.filter { song ->
                             song.albumArtist?.equals(artist.name, ignoreCase = true) == true ||
                             song.artists?.any { it.equals(artist.name, ignoreCase = true) } == true ||
                             song.artistItems?.any { it.name.equals(artist.name, ignoreCase = true) } == true
-                        }.sortedWith(
-                            compareBy<JellyfinItem> { it.albumName ?: "" }
-                                .thenBy { it.parentIndexNumber ?: 1 }
-                                .thenBy { it.indexNumber ?: 0 }
-                                .thenBy { it.name }
-                        )
-
-                        _artistAlbums.value = _albums.value.filter { album ->
+                        }
+                        serverAlbums = _albums.value.filter { album ->
                             album.albumArtist?.equals(artist.name, ignoreCase = true) == true ||
                             album.artists?.any { it.equals(artist.name, ignoreCase = true) } == true ||
                             album.artistItems?.any { it.name.equals(artist.name, ignoreCase = true) } == true
                         }
-                    } else {
-                        _artistAlbums.value = serverAlbums
-                        _artistSongs.value = serverSongs.sortedWith(
-                            compareBy<JellyfinItem> { it.albumName ?: "" }
-                                .thenBy { it.parentIndexNumber ?: 1 }
-                                .thenBy { it.indexNumber ?: 0 }
-                                .thenBy { it.name }
-                        )
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
-                } finally {
-                    _isLoading.value = false
                 }
             }
+
+            val baseSongs = if (isCachedActive) {
+                val cached = repository.getCachedSongsList()
+                cached.filter { it.artist.equals(artist.name, ignoreCase = true) }.map { it.toJellyfinItem() }
+            } else {
+                serverSongs
+            }
+
+            val resultSongs = if (isFavsActive) {
+                val favs = repository.getLocalFavoritesList()
+                if (isCachedActive) {
+                    baseSongs.filter { s -> favs.any { it.songId == s.id } }
+                } else {
+                    if (baseSongs.isNotEmpty()) {
+                        baseSongs.filter { s -> favs.any { it.songId == s.id } || s.userData?.isFavorite == true }
+                    } else {
+                        favs.filter { it.artist.equals(artist.name, ignoreCase = true) }.map { it.toJellyfinItem() }
+                    }
+                }
+            } else {
+                baseSongs
+            }
+
+            _artistSongs.value = resultSongs.sortedWith(
+                compareBy<JellyfinItem> { it.albumName ?: "" }
+                    .thenBy { it.parentIndexNumber ?: 1 }
+                    .thenBy { it.indexNumber ?: 0 }
+                    .thenBy { it.name }
+            )
+
+            // Calculate albums from resulting songs or server response
+            if (isCachedActive || isFavsActive) {
+                val albumNames = resultSongs.mapNotNull { it.albumName }.distinct()
+                _artistAlbums.value = albumNames.map { albName ->
+                    _albums.value.find { it.name.equals(albName, ignoreCase = true) }
+                        ?: JellyfinItem(
+                            id = resultSongs.firstOrNull { it.albumName.equals(albName, ignoreCase = true) }?.id ?: "local_alb",
+                            name = albName,
+                            type = "MusicAlbum",
+                            albumArtist = artist.name
+                        )
+                }
+            } else {
+                _artistAlbums.value = serverAlbums
+            }
+            
+            _isLoading.value = false
         }
     }
 
@@ -838,11 +872,10 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     }
 }
 
-enum class LibraryFilter {
-    ALL,
-    CACHED,
-    FAVORITES
-}
+data class LibraryFilterState(
+    val cached: Boolean = false,
+    val favorites: Boolean = false
+)
 
 enum class SortCriteria {
     ALPHABETICAL,
