@@ -185,38 +185,6 @@ fun MainLibraryScreen(
                         onClick = onExpandPlayer
                     )
                 }
-
-                // Standard M3 Navigation Bottom Bar
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp,
-                    windowInsets = WindowInsets.navigationBars
-                ) {
-                    val tabs = listOf(
-                        Triple("Library", Icons.Default.LibraryMusic, 0),
-                        Triple("Settings", Icons.Default.Settings, 1)
-                    )
-                    tabs.forEach { (label, icon, index) ->
-                        NavigationBarItem(
-                            selected = activeTab == index,
-                            onClick = {
-                                activeTab = index
-                                // Reset sub-views when backing out or changing layouts
-                                viewModel.selectAlbum(null)
-                                viewModel.selectArtist(null)
-                            },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        )
-                    }
-                }
             }
         }
     ) { paddingValues ->
@@ -231,7 +199,15 @@ fun MainLibraryScreen(
                     searchQuery = searchQuery,
                     onSearchQueryChange = { viewModel.updateSearchQuery(it) },
                     onRefresh = { viewModel.refreshLibrary() },
-                    serverName = activeServer?.username ?: "Demo"
+                    serverName = activeServer?.username ?: "Demo",
+                    isSettingsActive = activeTab == 1,
+                    onSettingsToggle = {
+                        activeTab = if (activeTab == 1) 0 else 1
+                        if (activeTab == 1) {
+                            viewModel.selectAlbum(null)
+                            viewModel.selectArtist(null)
+                        }
+                    }
                 )
 
                 // Render respective tab layout containing search queries
@@ -2746,7 +2722,9 @@ fun HeaderBlock(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onRefresh: () -> Unit,
-    serverName: String
+    serverName: String,
+    isSettingsActive: Boolean,
+    onSettingsToggle: () -> Unit
 ) {
     var searchVisible by remember { mutableStateOf(false) }
 
@@ -2755,7 +2733,7 @@ fun HeaderBlock(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -2765,33 +2743,41 @@ fun HeaderBlock(
             Column {
                 Text(
                     text = "JellyTune",
-                    style = MaterialTheme.typography.headlineMedium.copy(
+                    style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.5.sp
                     ),
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Mode: $serverName library",
+                    text = serverName,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
                 )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { searchVisible = !searchVisible }) {
-                    Icon(
-                        imageVector = if (searchVisible) Icons.Default.Close else Icons.Default.Search,
-                        contentDescription = "Filter Library"
-                    )
+                if (!isSettingsActive) {
+                    IconButton(onClick = { searchVisible = !searchVisible }) {
+                        Icon(
+                            imageVector = if (searchVisible) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = "Filter Library"
+                        )
+                    }
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh Items")
+                    }
                 }
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Items")
+                IconButton(onClick = onSettingsToggle) {
+                    Icon(
+                        imageVector = if (isSettingsActive) Icons.Default.Close else Icons.Default.Settings,
+                        contentDescription = if (isSettingsActive) "Close Settings" else "Settings"
+                    )
                 }
             }
         }
 
-        AnimatedVisibility(visible = searchVisible) {
+        AnimatedVisibility(visible = searchVisible && !isSettingsActive) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
@@ -2800,7 +2786,7 @@ fun HeaderBlock(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("filter_input")
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 4.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
