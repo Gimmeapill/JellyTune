@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -174,7 +175,9 @@ fun MainLibraryScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         bottomBar = {
-            Column {
+            Column(
+                modifier = Modifier.navigationBarsPadding()
+            ) {
                 // Sticky Mini Player
                 if (playbackState.currentSong != null) {
                     MiniPlayer(
@@ -688,26 +691,47 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val gridState = rememberLazyGridState()
     val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    val sortCriteria by viewModel.albumsSortCriteria.collectAsState()
+    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    val coroutineScope = rememberCoroutineScope()
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        state = gridState,
-        contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier
-            .fillMaxSize()
-            .drawGridScrollbar(gridState, scrollbarColor)
-    ) {
-        items(albums) { album ->
-            AlbumCard(
-                album = album,
-                artworkUrl = viewModel.getArtworkUrl(album.id),
-                onClick = {
-                    keyboardController?.hide()
-                    viewModel.selectAlbum(album)
-                },
-                onLongClick = { activeActionAlbum = album }
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            state = gridState,
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .drawGridScrollbar(gridState, scrollbarColor)
+        ) {
+            items(albums) { album ->
+                AlbumCard(
+                    album = album,
+                    artworkUrl = viewModel.getArtworkUrl(album.id),
+                    onClick = {
+                        keyboardController?.hide()
+                        viewModel.selectAlbum(album)
+                    },
+                    onLongClick = { activeActionAlbum = album }
+                )
+            }
+        }
+        
+        if (isAlphabetical) {
+            AlphabetSidebar(
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
+                onLetterSelect = { char ->
+                    val index = if (char == '#') {
+                        albums.indexOfFirst { !it.name.firstOrNull().let { c -> c != null && c.isLetter() } }
+                    } else {
+                        albums.indexOfFirst { it.name.firstOrNull()?.uppercaseChar() == char }
+                    }
+                    if (index != -1) {
+                        coroutineScope.launch { gridState.scrollToItem(index) }
+                    }
+                }
             )
         }
     }
@@ -833,24 +857,45 @@ fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val gridState = rememberLazyGridState()
     val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    val sortCriteria by viewModel.artistsSortCriteria.collectAsState()
+    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    val coroutineScope = rememberCoroutineScope()
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        state = gridState,
-        contentPadding = PaddingValues(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier
-            .fillMaxSize()
-            .drawGridScrollbar(gridState, scrollbarColor)
-    ) {
-        items(artists) { artist ->
-            ArtistCard(
-                artist = artist,
-                artworkUrl = viewModel.getArtworkUrl(artist.id),
-                onClick = {
-                    keyboardController?.hide()
-                    viewModel.selectArtist(artist)
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            state = gridState,
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .drawGridScrollbar(gridState, scrollbarColor)
+        ) {
+            items(artists) { artist ->
+                ArtistCard(
+                    artist = artist,
+                    artworkUrl = viewModel.getArtworkUrl(artist.id),
+                    onClick = {
+                        keyboardController?.hide()
+                        viewModel.selectArtist(artist)
+                    }
+                )
+            }
+        }
+        
+        if (isAlphabetical) {
+            AlphabetSidebar(
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
+                onLetterSelect = { char ->
+                    val index = if (char == '#') {
+                        artists.indexOfFirst { !it.name.firstOrNull().let { c -> c != null && c.isLetter() } }
+                    } else {
+                        artists.indexOfFirst { it.name.firstOrNull()?.uppercaseChar() == char }
+                    }
+                    if (index != -1) {
+                        coroutineScope.launch { gridState.scrollToItem(index) }
+                    }
                 }
             )
         }
@@ -872,35 +917,56 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
 
     val listState = rememberLazyListState()
     val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    val sortCriteria by viewModel.songsSortCriteria.collectAsState()
+    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    val coroutineScope = rememberCoroutineScope()
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .drawListScrollbar(listState, scrollbarColor),
-        contentPadding = PaddingValues(8.dp)
-    ) {
-        itemsIndexed(songs) { idx, song ->
-            val isCurrent = song.id == currentSong?.id
-            val isCached = cachedSongs.any { it.songId == song.id }
-            val isFav = localFavs.any { it.songId == song.id }
-            val dlProgress = dlMap[song.id]
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .drawListScrollbar(listState, scrollbarColor),
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            itemsIndexed(songs) { idx, song ->
+                val isCurrent = song.id == currentSong?.id
+                val isCached = cachedSongs.any { it.songId == song.id }
+                val isFav = localFavs.any { it.songId == song.id }
+                val dlProgress = dlMap[song.id]
 
-            SongItemRow(
-                index = idx + 1,
-                song = song,
-                artworkUrl = viewModel.getArtworkUrl(song.id),
-                isCurrent = isCurrent,
-                isCached = isCached,
-                isFav = isFav,
-                dlProgress = dlProgress,
-                onPlay = { viewModel.playTrackInQueue(songs, idx) },
-                onFavToggle = { viewModel.toggleFavorite(song) },
-                onCacheClick = {
-                    if (isCached) {
-                        viewModel.deleteSongFromCache(song.id)
+                SongItemRow(
+                    index = idx + 1,
+                    song = song,
+                    artworkUrl = viewModel.getArtworkUrl(song.id),
+                    isCurrent = isCurrent,
+                    isCached = isCached,
+                    isFav = isFav,
+                    dlProgress = dlProgress,
+                    onPlay = { viewModel.playTrackInQueue(songs, idx) },
+                    onFavToggle = { viewModel.toggleFavorite(song) },
+                    onCacheClick = {
+                        if (isCached) {
+                            viewModel.deleteSongFromCache(song.id)
+                        } else {
+                            viewModel.downloadAndCacheTrack(song)
+                        }
+                    }
+                )
+            }
+        }
+        
+        if (isAlphabetical) {
+            AlphabetSidebar(
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
+                onLetterSelect = { char ->
+                    val index = if (char == '#') {
+                        songs.indexOfFirst { !it.name.firstOrNull().let { c -> c != null && c.isLetter() } }
                     } else {
-                        viewModel.downloadAndCacheTrack(song)
+                        songs.indexOfFirst { it.name.firstOrNull()?.uppercaseChar() == char }
+                    }
+                    if (index != -1) {
+                        coroutineScope.launch { listState.scrollToItem(index) }
                     }
                 }
             )
@@ -2878,7 +2944,7 @@ fun Modifier.drawListScrollbar(
             detectDragGestures(
                 onDragStart = { offset ->
                     val width = size.width
-                    if (offset.x >= width - 96.dp.toPx()) {
+                    if (offset.x >= width - 36.dp.toPx()) {
                         isDragging = true
                     }
                 },
@@ -2943,7 +3009,7 @@ fun Modifier.drawGridScrollbar(
             detectDragGestures(
                 onDragStart = { offset ->
                     val width = size.width
-                    if (offset.x >= width - 96.dp.toPx()) {
+                    if (offset.x >= width - 36.dp.toPx()) {
                         isDragging = true
                     }
                 },
