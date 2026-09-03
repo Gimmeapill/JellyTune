@@ -14,19 +14,26 @@ android {
     applicationId = "com.aistudio.jellytune.kxpqla"
     minSdk = 24
     targetSdk = 36
-    versionCode = 65
-    versionName = "65.0"
+    versionCode = 66
+    versionName = "66.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      val keystorePath = System.getenv("KEYSTORE_PATH")
+      val keystoreFile = if (keystorePath != null && file(keystorePath).exists()) {
+        file(keystorePath)
+      } else if (file("${rootDir}/my-upload-key.jks").exists()) {
+        file("${rootDir}/my-upload-key.jks")
+      } else {
+        file("${rootDir}/debug.keystore")
+      }
+      storeFile = keystoreFile
+      storePassword = System.getenv("STORE_PASSWORD") ?: "android"
+      keyAlias = System.getenv("KEY_ALIAS") ?: if (keystoreFile.name == "debug.keystore") "androiddebugkey" else "upload"
+      keyPassword = System.getenv("KEY_PASSWORD") ?: "android"
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")

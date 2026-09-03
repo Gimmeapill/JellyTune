@@ -72,12 +72,15 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import com.example.ui.LibraryFilter
 import com.example.ui.SortCriteria
 import com.example.ui.SortDirection
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -191,10 +194,8 @@ fun MainLibraryScreen(
                     windowInsets = WindowInsets.navigationBars
                 ) {
                     val tabs = listOf(
-                        Triple("Explore", Icons.Default.LibraryMusic, 0),
-                        Triple("Favorites", Icons.Default.Favorite, 1),
-                        Triple("Cached", Icons.Default.CloudDone, 2),
-                        Triple("Settings", Icons.Default.Settings, 3)
+                        Triple("Library", Icons.Default.LibraryMusic, 0),
+                        Triple("Settings", Icons.Default.Settings, 1)
                     )
                     tabs.forEach { (label, icon, index) ->
                         NavigationBarItem(
@@ -242,9 +243,7 @@ fun MainLibraryScreen(
                 ) {
                     when (activeTab) {
                         0 -> ExploreTab(viewModel)
-                        1 -> FavoritesTab(viewModel)
-                        2 -> CachedTab(viewModel)
-                        3 -> SettingsTab(viewModel)
+                        1 -> SettingsTab(viewModel)
                     }
                 }
             }
@@ -442,8 +441,11 @@ fun ExploreHeroCard(viewModel: JellyTuneViewModel) {
 
 // --- EXPLORE VIEW & THE SUB-TABS (ALBUM, ARTIST, TRACKS) ---
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SortSelectionBar(
+    currentFilter: LibraryFilter,
+    onFilterSelected: (LibraryFilter) -> Unit,
     criteria: SortCriteria,
     direction: SortDirection,
     onCriteriaSelected: (SortCriteria) -> Unit,
@@ -451,70 +453,132 @@ fun SortSelectionBar(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 16.dp, vertical = 2.dp)
     ) {
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { expanded = !expanded }
-                .padding(vertical = 4.dp, horizontal = 8.dp)
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(
-                imageVector = Icons.Default.Sort,
-                contentDescription = "Sort Options",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            val friendlyCriteriaName = when (criteria) {
-                SortCriteria.ALPHABETICAL -> "Alphabetical"
-                SortCriteria.DATE -> "Date / Year"
-                SortCriteria.DATE_ADDED -> "Date Added"
-            }
-            Text(
-                text = "Sort: $friendlyCriteriaName",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        IconButton(
-            onClick = onDirectionToggle,
-            modifier = Modifier.size(32.dp)
-        ) {
-            Icon(
-                imageVector = if (direction == SortDirection.ASCENDING) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                contentDescription = "Toggle Sort Direction",
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.secondary
-            )
-        }
-
-        if (expanded) {
-            androidx.compose.material3.DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+            // Filter Chips: All, Cached, Favorites
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                SortCriteria.values().forEach { crit ->
-                    val label = when (crit) {
-                        SortCriteria.ALPHABETICAL -> "Alphabetical"
-                        SortCriteria.DATE -> "Date / Year"
-                        SortCriteria.DATE_ADDED -> "Date Added"
-                    }
-                    androidx.compose.material3.DropdownMenuItem(
-                        text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
-                        onClick = {
-                            onCriteriaSelected(crit)
-                            expanded = false
+                FilterChip(
+                    selected = currentFilter == LibraryFilter.ALL,
+                    onClick = { onFilterSelected(LibraryFilter.ALL) },
+                    label = { Text("All", style = MaterialTheme.typography.labelMedium) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+
+                FilterChip(
+                    selected = currentFilter == LibraryFilter.CACHED,
+                    onClick = { onFilterSelected(LibraryFilter.CACHED) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.CloudDone,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    },
+                    label = { Text("Cached", style = MaterialTheme.typography.labelMedium) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+
+                FilterChip(
+                    selected = currentFilter == LibraryFilter.FAVORITES,
+                    onClick = { onFilterSelected(LibraryFilter.FAVORITES) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    },
+                    label = { Text("Favorites", style = MaterialTheme.typography.labelMedium) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+
+            // Sort Menu & Direction
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { expanded = !expanded }
+                            .padding(vertical = 4.dp, horizontal = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sort,
+                            contentDescription = "Sort Options",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        val friendlyCriteriaName = when (criteria) {
+                            SortCriteria.ALPHABETICAL -> "Alpha"
+                            SortCriteria.DATE -> "Date"
+                            SortCriteria.DATE_ADDED -> "Added"
                         }
+                        Text(
+                            text = friendlyCriteriaName,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (expanded) {
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            SortCriteria.values().forEach { crit ->
+                                val label = when (crit) {
+                                    SortCriteria.ALPHABETICAL -> "Alphabetical"
+                                    SortCriteria.DATE -> "Date / Year"
+                                    SortCriteria.DATE_ADDED -> "Date Added"
+                                }
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                                    onClick = {
+                                        onCriteriaSelected(crit)
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = onDirectionToggle,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = if (direction == SortDirection.ASCENDING) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                        contentDescription = "Toggle Sort Direction",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.secondary
                     )
                 }
             }
@@ -581,6 +645,7 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
         val sortCriteria: SortCriteria
         val sortDirection: SortDirection
         val onSortChanged: (SortCriteria, SortDirection) -> Unit
+        val currentFilter by viewModel.libraryFilter.collectAsState()
 
         when (subTab) {
             0 -> {
@@ -601,6 +666,8 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
         }
 
         SortSelectionBar(
+            currentFilter = currentFilter,
+            onFilterSelected = { filter -> viewModel.setLibraryFilter(filter) },
             criteria = sortCriteria,
             direction = sortDirection,
             onCriteriaSelected = { criteria -> onSortChanged(criteria, sortDirection) },
@@ -1391,6 +1458,26 @@ fun ArtistDetailsScreen(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.playArtistNow(artist) },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Play All"
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Play All Tracks", fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -2794,13 +2881,13 @@ fun Modifier.drawListScrollbar(
                     val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
                     val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
                     
-                    val barWidth = if (isDragging) 16.dp else 10.dp
-                    val barColor = if (isDragging) color.copy(alpha = 0.85f) else color
+                    val barWidth = if (isDragging) 18.dp else 12.dp
+                    val barColor = if (isDragging) color.copy(alpha = 0.95f) else color.copy(alpha = 0.7f)
                     
                     drawRoundRect(
                         color = barColor,
                         topLeft = Offset(x = size.width - (barWidth + 4.dp).toPx(), y = scrollbarOffsetY),
-                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(40.dp.toPx())),
+                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(56.dp.toPx())),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth.toPx() / 2, barWidth.toPx() / 2)
                     )
                 }
@@ -2810,7 +2897,7 @@ fun Modifier.drawListScrollbar(
             detectDragGestures(
                 onDragStart = { offset ->
                     val width = size.width
-                    if (offset.x >= width - 80.dp.toPx()) {
+                    if (offset.x >= width - 96.dp.toPx()) {
                         isDragging = true
                     }
                 },
@@ -2859,13 +2946,13 @@ fun Modifier.drawGridScrollbar(
                     val scrollbarHeight = (visibleItemsCount.toFloat() / totalItemsCount) * viewportHeight
                     val scrollbarOffsetY = (firstVisibleIndex.toFloat() / totalItemsCount) * viewportHeight
                     
-                    val barWidth = if (isDragging) 16.dp else 10.dp
-                    val barColor = if (isDragging) color.copy(alpha = 0.85f) else color
+                    val barWidth = if (isDragging) 18.dp else 12.dp
+                    val barColor = if (isDragging) color.copy(alpha = 0.95f) else color.copy(alpha = 0.7f)
                     
                     drawRoundRect(
                         color = barColor,
                         topLeft = Offset(x = size.width - (barWidth + 4.dp).toPx(), y = scrollbarOffsetY),
-                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(40.dp.toPx())),
+                        size = Size(width = barWidth.toPx(), height = scrollbarHeight.coerceAtLeast(56.dp.toPx())),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth.toPx() / 2, barWidth.toPx() / 2)
                     )
                 }
@@ -2875,7 +2962,7 @@ fun Modifier.drawGridScrollbar(
             detectDragGestures(
                 onDragStart = { offset ->
                     val width = size.width
-                    if (offset.x >= width - 80.dp.toPx()) {
+                    if (offset.x >= width - 96.dp.toPx()) {
                         isDragging = true
                     }
                 },

@@ -474,7 +474,9 @@ fun CachedSong.toJellyfinItem(): JellyfinItem {
         type = "Audio",
         albumName = this.album,
         albumArtist = this.artist,
-        runTimeTicks = this.durationMs * 10000L
+        runTimeTicks = this.durationMs * 10000L,
+        indexNumber = this.indexNumber,
+        parentIndexNumber = this.parentIndexNumber
     )
 }
 
@@ -485,6 +487,8 @@ fun LocalFavorite.toJellyfinItem(): JellyfinItem {
         type = "Audio",
         albumName = this.album,
         albumArtist = this.artist,
-        runTimeTicks = this.durationMs * 10000L
+        runTimeTicks = this.durationMs * 10000L,
+        indexNumber = this.indexNumber,
+        parentIndexNumber = this.parentIndexNumber
     )
 }

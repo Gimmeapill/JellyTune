@@ -535,7 +535,9 @@ class JellyfinRepository(private val context: Context) {
                 title = song.name,
                 artist = song.albumArtist ?: song.artists?.firstOrNull() ?: "Unknown Artist",
                 album = song.albumName ?: "Unknown Album",
-                durationMs = song.durationMs
+                durationMs = song.durationMs,
+                indexNumber = song.indexNumber,
+                parentIndexNumber = song.parentIndexNumber
             )
             favoriteDao.insertFavorite(fav)
         }
@@ -557,7 +559,9 @@ class JellyfinRepository(private val context: Context) {
                 title = song.title,
                 artist = song.artist,
                 album = song.album,
-                durationMs = song.durationMs
+                durationMs = song.durationMs,
+                indexNumber = song.indexNumber,
+                parentIndexNumber = song.parentIndexNumber
             )
             favoriteDao.insertFavorite(fav)
         }
@@ -595,7 +599,9 @@ class JellyfinRepository(private val context: Context) {
                         title = song.name,
                         artist = song.albumArtist ?: song.artists?.firstOrNull() ?: "Unknown Artist",
                         album = song.albumName ?: "Unknown Album",
-                        durationMs = song.durationMs
+                        durationMs = song.durationMs,
+                        indexNumber = song.indexNumber,
+                        parentIndexNumber = song.parentIndexNumber
                     )
                     favoriteDao.insertFavorite(fav)
                 }
@@ -622,6 +628,10 @@ class JellyfinRepository(private val context: Context) {
                 }
             }
         }
+    }
+
+    suspend fun getLocalFavoritesList(): List<LocalFavorite> = withContext(Dispatchers.IO) {
+        favoriteDao.getAllFavoritesList()
     }
 
     // --- CACHING ENGINE (FILESYSTEM DOWNLOAD) ---
@@ -686,7 +696,9 @@ class JellyfinRepository(private val context: Context) {
                     artist = song.albumArtist ?: song.artists?.firstOrNull() ?: "Unknown Artist",
                     album = song.albumName ?: "Unknown Album",
                     durationMs = song.durationMs,
-                    filePath = targetFile.absolutePath
+                    filePath = targetFile.absolutePath,
+                    indexNumber = song.indexNumber,
+                    parentIndexNumber = song.parentIndexNumber
                 )
                 cachedSongDao.insertCachedSong(cached)
                 return@withContext true
