@@ -173,10 +173,10 @@ fun MainLibraryScreen(
     }
 
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().navigationBarsPadding(),
         bottomBar = {
             Column(
-                modifier = Modifier.navigationBarsPadding()
+                modifier = Modifier
             ) {
                 // Sticky Mini Player
                 if (playbackState.currentSong != null) {
@@ -2331,39 +2331,6 @@ fun SettingsTab(viewModel: JellyTuneViewModel) {
                         Text("Wipe Storage", color = MaterialTheme.colorScheme.error)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Wifi-Only Mode switch
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Wi-Fi Only Mode",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Save mobile data by forcing offline mode when disconnected from Wi-Fi.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    }
-                    val isWifiOnly by viewModel.wifiOnlyMode.collectAsState()
-                    androidx.compose.material3.Switch(
-                        checked = isWifiOnly,
-                        onCheckedChange = { viewModel.setWifiOnlyMode(it) }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.1f))
-                Spacer(modifier = Modifier.height(16.dp))
 
                 val maxLimitMb by viewModel.maxCacheSizeMb.collectAsState()
                 val currentSizeMb by viewModel.currentCacheSizeMb.collectAsState()

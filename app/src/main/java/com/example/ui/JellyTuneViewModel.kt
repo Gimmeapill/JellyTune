@@ -109,8 +109,6 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _offlineMode = MutableStateFlow(prefs.getBoolean("offline_mode", false))
     val offlineMode = _offlineMode.asStateFlow()
 
-    private val _wifiOnlyMode = MutableStateFlow(prefs.getBoolean("wifi_only_mode", false))
-    val wifiOnlyMode = _wifiOnlyMode.asStateFlow()
 
     private val _filterCached = MutableStateFlow(false)
     val filterCached = _filterCached.asStateFlow()
@@ -131,17 +129,13 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         prefs.edit().putBoolean("offline_mode", enabled).apply()
     }
 
-    fun setWifiOnlyMode(enabled: Boolean) {
-        _wifiOnlyMode.value = enabled
-        prefs.edit().putBoolean("wifi_only_mode", enabled).apply()
-    }
 
     val effectiveOfflineMode: StateFlow<Boolean> = combine(
         _offlineMode,
-        _wifiOnlyMode,
+        
         networkMonitor.isWifiConnected
-    ) { offlineSelected, wifiOnly, isWifi ->
-        offlineSelected || (wifiOnly && !isWifi)
+    ) { offlineSelected,  isWifi ->
+        offlineSelected
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _offlineMode.value)
 
     private val _maxCacheSizeMb = MutableStateFlow(prefs.getLong("max_cache_size_mb", 1024L))
