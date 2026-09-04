@@ -2907,32 +2907,38 @@ fun Modifier.drawListScrollbar(
                 }
             }
         }
-        .pointerInput(state) {
-            detectDragGestures(
-                onDragStart = { offset ->
-                    val width = size.width
-                    if (offset.x >= width - 36.dp.toPx()) {
-                        isDragging = true
+                .pointerInput(state) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    val down = event.changes.firstOrNull { it.pressed }
+                    if (down != null && !isDragging) {
+                        if (down.position.x >= size.width - 48.dp.toPx()) {
+                            isDragging = true
+                            down.consume()
+                        }
                     }
-                },
-                onDragEnd = { isDragging = false },
-                onDragCancel = { isDragging = false },
-                onDrag = { change, _ ->
                     if (isDragging) {
-                        change.consume()
-                        val viewportHeight = size.height
-                        val totalItemsCount = state.layoutInfo.totalItemsCount
-                        if (totalItemsCount > 0 && viewportHeight > 0) {
-                            val touchY = change.position.y
-                            val progress = (touchY / viewportHeight).coerceIn(0f, 1f)
-                            val targetIndex = (progress * totalItemsCount).toInt().coerceIn(0, totalItemsCount - 1)
-                            coroutineScope.launch {
-                                state.scrollToItem(targetIndex)
+                        event.changes.forEach { it.consume() }
+                        val change = event.changes.firstOrNull()
+                        if (change != null) {
+                            val viewportHeight = size.height
+                            val totalItemsCount = state.layoutInfo.totalItemsCount
+                            if (totalItemsCount > 0 && viewportHeight > 0) {
+                                val touchY = change.position.y
+                                val progress = (touchY / viewportHeight).coerceIn(0f, 1f)
+                                val targetIndex = (progress * totalItemsCount).toInt().coerceIn(0, totalItemsCount - 1)
+                                coroutineScope.launch {
+                                    state.scrollToItem(targetIndex)
+                                }
                             }
+                        }
+                        if (event.changes.all { !it.pressed }) {
+                            isDragging = false
                         }
                     }
                 }
-            )
+            }
         }
 }
 
@@ -2972,31 +2978,37 @@ fun Modifier.drawGridScrollbar(
                 }
             }
         }
-        .pointerInput(state) {
-            detectDragGestures(
-                onDragStart = { offset ->
-                    val width = size.width
-                    if (offset.x >= width - 36.dp.toPx()) {
-                        isDragging = true
+                .pointerInput(state) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    val down = event.changes.firstOrNull { it.pressed }
+                    if (down != null && !isDragging) {
+                        if (down.position.x >= size.width - 48.dp.toPx()) {
+                            isDragging = true
+                            down.consume()
+                        }
                     }
-                },
-                onDragEnd = { isDragging = false },
-                onDragCancel = { isDragging = false },
-                onDrag = { change, _ ->
                     if (isDragging) {
-                        change.consume()
-                        val viewportHeight = size.height
-                        val totalItemsCount = state.layoutInfo.totalItemsCount
-                        if (totalItemsCount > 0 && viewportHeight > 0) {
-                            val touchY = change.position.y
-                            val progress = (touchY / viewportHeight).coerceIn(0f, 1f)
-                            val targetIndex = (progress * totalItemsCount).toInt().coerceIn(0, totalItemsCount - 1)
-                            coroutineScope.launch {
-                                state.scrollToItem(targetIndex)
+                        event.changes.forEach { it.consume() }
+                        val change = event.changes.firstOrNull()
+                        if (change != null) {
+                            val viewportHeight = size.height
+                            val totalItemsCount = state.layoutInfo.totalItemsCount
+                            if (totalItemsCount > 0 && viewportHeight > 0) {
+                                val touchY = change.position.y
+                                val progress = (touchY / viewportHeight).coerceIn(0f, 1f)
+                                val targetIndex = (progress * totalItemsCount).toInt().coerceIn(0, totalItemsCount - 1)
+                                coroutineScope.launch {
+                                    state.scrollToItem(targetIndex)
+                                }
                             }
+                        }
+                        if (event.changes.all { !it.pressed }) {
+                            isDragging = false
                         }
                     }
                 }
-            )
+            }
         }
 }
