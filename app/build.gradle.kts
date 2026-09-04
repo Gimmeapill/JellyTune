@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.jellytune.kxpqla"
     minSdk = 24
     targetSdk = 36
-    versionCode = 82
-    versionName = "82.0"
+    versionCode = 87
+    versionName = "87.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

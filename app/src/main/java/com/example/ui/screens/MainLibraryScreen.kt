@@ -686,6 +686,7 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
 
 @Composable
 fun ExploreAlbumArtistsGrid(viewModel: JellyTuneViewModel) {
+    val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
     val artists by viewModel.filteredAlbumArtists.collectAsState()
     val sortCriteria by viewModel.albumArtistsSortCriteria.collectAsState()
     val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
@@ -729,6 +730,7 @@ fun ExploreAlbumArtistsGrid(viewModel: JellyTuneViewModel) {
 
 @Composable
 fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
+    val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
     val artists by viewModel.filteredArtists.collectAsState()
     val sortCriteria by viewModel.artistsSortCriteria.collectAsState()
     val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
@@ -772,6 +774,7 @@ fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
 
 @Composable
 fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
+    val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
     val albums by viewModel.filteredAlbums.collectAsState()
     val sortCriteria by viewModel.albumsSortCriteria.collectAsState()
     val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
@@ -903,6 +906,7 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
                     isPlaying = isPlaying,
                     isCached = isCached,
                     isFavorite = isFav,
+                    onFavoriteToggle = { viewModel.toggleFavorite(song) },
                     onClick = {
                         keyboardController?.hide()
                         val index = songs.indexOf(song)
@@ -954,6 +958,7 @@ fun ArtistCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
+
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -1108,8 +1113,17 @@ fun AlbumDetailsScreen(
                 Text(
                     text = "Album Details",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
                 )
+                val isAlbumFav = album.userData?.isFavorite == true || localFavs.any { it.songId == album.id }
+                IconButton(onClick = { viewModel.toggleFavorite(album) }) {
+                    Icon(
+                        imageVector = if (isAlbumFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favorite Album",
+                        tint = if (isAlbumFav) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             // Header album art design
@@ -1347,8 +1361,17 @@ fun ArtistDetailsScreen(
                 Text(
                     text = "Artist Details",
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
                 )
+                val isArtistFav = artist.userData?.isFavorite == true || localFavs.any { it.songId == artist.id }
+                IconButton(onClick = { viewModel.toggleFavorite(artist) }) {
+                    Icon(
+                        imageVector = if (isArtistFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favorite Artist",
+                        tint = if (isArtistFav) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             // Artist Banner Cover
@@ -2957,6 +2980,7 @@ fun AlbumCard(
                     .clip(MaterialTheme.shapes.medium)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
+
                 if (artworkUrl.isNotEmpty()) {
                     AsyncImage(
                         model = artworkUrl,
@@ -2972,6 +2996,7 @@ fun AlbumCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
                 }
+
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -3000,6 +3025,7 @@ fun TrackListItem(
     isPlaying: Boolean,
     isCached: Boolean,
     isFavorite: Boolean,
+    onFavoriteToggle: () -> Unit,
     onClick: () -> Unit,
     onDownload: () -> Unit
 ) {
@@ -3061,11 +3087,11 @@ fun TrackListItem(
                 )
             }
         }
-        if (isFavorite) {
+        IconButton(onClick = onFavoriteToggle) {
             Icon(
-                Icons.Default.Favorite,
+                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 contentDescription = "Favorite",
-                tint = MaterialTheme.colorScheme.primary,
+                tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                 modifier = Modifier.padding(end = 8.dp)
             )
         }
