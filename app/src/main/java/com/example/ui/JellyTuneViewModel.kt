@@ -56,6 +56,12 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _artistsSortDirection = MutableStateFlow(SortDirection.valueOf(prefs.getString("artists_sort_direction", SortDirection.ASCENDING.name) ?: SortDirection.ASCENDING.name))
     val artistsSortDirection = _artistsSortDirection.asStateFlow()
 
+    private val _albumArtistsSortCriteria = MutableStateFlow(SortCriteria.valueOf(prefs.getString("album_artists_sort_criteria", SortCriteria.ALPHABETICAL.name) ?: SortCriteria.ALPHABETICAL.name))
+    val albumArtistsSortCriteria = _albumArtistsSortCriteria.asStateFlow()
+
+    private val _albumArtistsSortDirection = MutableStateFlow(SortDirection.valueOf(prefs.getString("album_artists_sort_direction", SortDirection.ASCENDING.name) ?: SortDirection.ASCENDING.name))
+    val albumArtistsSortDirection = _albumArtistsSortDirection.asStateFlow()
+
     private val _albumsSortCriteria = MutableStateFlow(SortCriteria.valueOf(prefs.getString("albums_sort_criteria", SortCriteria.ALPHABETICAL.name) ?: SortCriteria.ALPHABETICAL.name))
     val albumsSortCriteria = _albumsSortCriteria.asStateFlow()
 
@@ -74,6 +80,15 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
         prefs.edit()
             .putString("artists_sort_criteria", criteria.name)
             .putString("artists_sort_direction", direction.name)
+            .apply()
+    }
+
+    fun setAlbumArtistsSort(criteria: SortCriteria, direction: SortDirection) {
+        _albumArtistsSortCriteria.value = criteria
+        _albumArtistsSortDirection.value = direction
+        prefs.edit()
+            .putString("album_artists_sort_criteria", criteria.name)
+            .putString("album_artists_sort_direction", direction.name)
             .apply()
     }
 
@@ -423,6 +438,35 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
             it.artists?.any { artist -> artist.contains(query, ignoreCase = true) } == true
         }
         sortJellyfinItems(filtered, criteria, direction)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val displayAlbumArtists: StateFlow<List<JellyfinItem>> = combine(
+        displayArtists,
+        _albums
+    ) { artists, albums ->
+        val albumArtistNames = albums.mapNotNull { it.albumArtist }.distinct()
+        artists.filter { artist -> 
+            albumArtistNames.any { it.equals(artist.name, ignoreCase = true) } 
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val filteredAlbumArtists: StateFlow<List<JellyfinItem>> = combine(
+        displayAlbumArtists,
+        _searchQuery,
+        _albumArtistsSortCriteria,
+        _albumArtistsSortDirection
+    ) { artists, query, criteria, direction ->
+        val filtered = if (query.isBlank()) {
+            artists
+        } else {
+            artists.filter { it.name.contains(query, ignoreCase = true) }
+        }
+        when (criteria) {
+            SortCriteria.ALPHABETICAL -> if (direction == SortDirection.ASCENDING) filtered.sortedBy { it.name } else filtered.sortedByDescending { it.name }
+            SortCriteria.DATE_ADDED -> if (direction == SortDirection.ASCENDING) filtered.sortedBy { it.dateCreated } else filtered.sortedByDescending { it.dateCreated }
+            SortCriteria.DATE -> if (direction == SortDirection.ASCENDING) filtered.sortedBy { it.productionYear } else filtered.sortedByDescending { it.productionYear }
+            else -> filtered
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val filteredArtists: StateFlow<List<JellyfinItem>> = combine(

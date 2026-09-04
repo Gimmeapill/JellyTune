@@ -1,4 +1,5 @@
 package com.example.ui.screens
+import androidx.compose.material.icons.filled.Add
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -584,7 +585,7 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
                     )
                 }
             ) {
-                val subTabs = listOf("Artists", "Albums", "Tracks")
+                val subTabs = listOf("Album Artists", "Artists", "Albums", "Tracks")
                 subTabs.forEachIndexed { idx, label ->
                     Tab(
                         selected = subTab == idx,
@@ -619,20 +620,34 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
         val isCachedActive by viewModel.filterCached.collectAsState()
         val isFavoritesActive by viewModel.filterFavorites.collectAsState()
 
+        val aaCriteria = viewModel.albumArtistsSortCriteria.collectAsState().value
+        val aaDirection = viewModel.albumArtistsSortDirection.collectAsState().value
+        val arCriteria = viewModel.artistsSortCriteria.collectAsState().value
+        val arDirection = viewModel.artistsSortDirection.collectAsState().value
+        val alCriteria = viewModel.albumsSortCriteria.collectAsState().value
+        val alDirection = viewModel.albumsSortDirection.collectAsState().value
+        val soCriteria = viewModel.songsSortCriteria.collectAsState().value
+        val soDirection = viewModel.songsSortDirection.collectAsState().value
+
         when (subTab) {
             0 -> {
-                sortCriteria = viewModel.artistsSortCriteria.collectAsState().value
-                sortDirection = viewModel.artistsSortDirection.collectAsState().value
-                onSortChanged = { criteria, direction -> viewModel.setArtistsSort(criteria, direction) }
+                sortCriteria = aaCriteria
+                sortDirection = aaDirection
+                onSortChanged = { criteria, direction -> viewModel.setAlbumArtistsSort(criteria, direction) }
             }
             1 -> {
-                sortCriteria = viewModel.albumsSortCriteria.collectAsState().value
-                sortDirection = viewModel.albumsSortDirection.collectAsState().value
+                sortCriteria = arCriteria
+                sortDirection = arDirection
+                onSortChanged = { criteria, direction -> viewModel.setArtistsSort(criteria, direction) }
+            }
+            2 -> {
+                sortCriteria = alCriteria
+                sortDirection = alDirection
                 onSortChanged = { criteria, direction -> viewModel.setAlbumsSort(criteria, direction) }
             }
             else -> {
-                sortCriteria = viewModel.songsSortCriteria.collectAsState().value
-                sortDirection = viewModel.songsSortDirection.collectAsState().value
+                sortCriteria = soCriteria
+                sortDirection = soDirection
                 onSortChanged = { criteria, direction -> viewModel.setSongsSort(criteria, direction) }
             }
         }
@@ -653,9 +668,10 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
 
         Box(modifier = Modifier.fillMaxSize()) {
             when (subTab) {
-                0 -> ExploreArtistsGrid(viewModel)
-                1 -> ExploreAlbumsGrid(viewModel)
-                2 -> ExploreSongsList(viewModel)
+                0 -> ExploreAlbumArtistsGrid(viewModel)
+                1 -> ExploreArtistsGrid(viewModel)
+                2 -> ExploreAlbumsGrid(viewModel)
+                3 -> ExploreSongsList(viewModel)
             }
             if (isLoading) {
                 androidx.compose.material3.LinearProgressIndicator(
@@ -669,10 +685,98 @@ fun ExploreTab(viewModel: JellyTuneViewModel) {
 }
 
 @Composable
+fun ExploreAlbumArtistsGrid(viewModel: JellyTuneViewModel) {
+    val artists by viewModel.filteredAlbumArtists.collectAsState()
+    val sortCriteria by viewModel.albumArtistsSortCriteria.collectAsState()
+    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    
+    if (artists.isEmpty()) {
+        EmptyStateBlock("No album artists found. Refresh or adjust search.")
+        return
+    }
+
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val gridState = rememberLazyGridState()
+    val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            state = gridState,
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .drawGridScrollbar(gridState, scrollbarColor)
+        ) {
+            items(artists) { artist ->
+                ArtistCard(
+                    artist = artist,
+                    artworkUrl = viewModel.getArtworkUrl(artist.id),
+                    onClick = {
+                        keyboardController?.hide()
+                        viewModel.selectArtist(artist)
+                    }
+                )
+            }
+        }
+        if (isAlphabetical && gridState.isScrollInProgress) {
+            AlphabetOverlay(firstVisibleItemIndex = gridState.firstVisibleItemIndex, items = artists)
+        }
+    }
+}
+
+@Composable
+fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
+    val artists by viewModel.filteredArtists.collectAsState()
+    val sortCriteria by viewModel.artistsSortCriteria.collectAsState()
+    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    
+    if (artists.isEmpty()) {
+        EmptyStateBlock("No artists found. Refresh or adjust search.")
+        return
+    }
+
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val gridState = rememberLazyGridState()
+    val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            state = gridState,
+            contentPadding = PaddingValues(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .drawGridScrollbar(gridState, scrollbarColor)
+        ) {
+            items(artists) { artist ->
+                ArtistCard(
+                    artist = artist,
+                    artworkUrl = viewModel.getArtworkUrl(artist.id),
+                    onClick = {
+                        keyboardController?.hide()
+                        viewModel.selectArtist(artist)
+                    }
+                )
+            }
+        }
+        if (isAlphabetical && gridState.isScrollInProgress) {
+            AlphabetOverlay(firstVisibleItemIndex = gridState.firstVisibleItemIndex, items = artists)
+        }
+    }
+}
+
+@Composable
 fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
     val albums by viewModel.filteredAlbums.collectAsState()
-    var activeActionAlbum by remember { mutableStateOf<JellyfinItem?>(null) }
-
+    val sortCriteria by viewModel.albumsSortCriteria.collectAsState()
+    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    var activeActionAlbum by remember { mutableStateOf<com.example.data.jellyfin.JellyfinItem?>(null) }
+    
     if (albums.isEmpty()) {
         EmptyStateBlock("No albums found. Refresh or adjust search.")
         return
@@ -691,10 +795,7 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val gridState = rememberLazyGridState()
     val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-    val sortCriteria by viewModel.albumsSortCriteria.collectAsState()
-    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
-    val coroutineScope = rememberCoroutineScope()
-
+    
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -718,28 +819,15 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
                 )
             }
         }
-        
-        if (isAlphabetical) {
-            AlphabetSidebar(
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
-                onLetterSelect = { char ->
-                    val index = if (char == '#') {
-                        albums.indexOfFirst { !it.name.firstOrNull().let { c -> c != null && c.isLetter() } }
-                    } else {
-                        albums.indexOfFirst { it.name.firstOrNull()?.uppercaseChar() == char }
-                    }
-                    if (index != -1) {
-                        coroutineScope.launch { gridState.scrollToItem(index) }
-                    }
-                }
-            )
+        if (isAlphabetical && gridState.isScrollInProgress) {
+            AlphabetOverlay(firstVisibleItemIndex = gridState.firstVisibleItemIndex, items = albums)
         }
     }
 }
 
 @Composable
 fun AlbumActionDialog(
-    album: JellyfinItem,
+    album: com.example.data.jellyfin.JellyfinItem,
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
     onAddToQueue: () -> Unit,
@@ -749,157 +837,34 @@ fun AlbumActionDialog(
         onDismissRequest = onDismiss,
         confirmButton = {},
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text("Cancel", color = MaterialTheme.colorScheme.primary)
-            }
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") }
         },
         title = {
-            Text(
-                text = album.name,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text("Options for ${album.name}", style = MaterialTheme.typography.titleLarge)
         },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onPlay()
-                            onDismiss()
-                        }
-                        .padding(vertical = 12.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Play Now",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = "Play Now",
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.material3.TextButton(onClick = { onPlay(); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.padding(end = 16.dp))
+                        Text("Play Next", style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onAddToQueue()
-                            onDismiss()
-                        }
-                        .padding(vertical = 12.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Queue,
-                        contentDescription = "Add to Play Queue",
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = "Add to play queue",
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                androidx.compose.material3.TextButton(onClick = { onAddToQueue(); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.padding(end = 16.dp))
+                        Text("Add to Queue", style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onDownload()
-                            onDismiss()
-                        }
-                        .padding(vertical = 12.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = "Add to Local Cache Only",
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = "Add to local cache only",
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                androidx.compose.material3.TextButton(onClick = { onDownload(); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.padding(end = 16.dp))
+                        Text("Download Offline", style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
             }
-        },
-        shape = RoundedCornerShape(24.dp),
-        containerColor = MaterialTheme.colorScheme.surface
+        }
     )
-}
-
-@Composable
-fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
-    val artists by viewModel.filteredArtists.collectAsState()
-
-    if (artists.isEmpty()) {
-        EmptyStateBlock("No artists found.")
-        return
-    }
-
-    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val gridState = rememberLazyGridState()
-    val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-    val sortCriteria by viewModel.artistsSortCriteria.collectAsState()
-    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
-    val coroutineScope = rememberCoroutineScope()
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            state = gridState,
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier
-                .fillMaxSize()
-                .drawGridScrollbar(gridState, scrollbarColor)
-        ) {
-            items(artists) { artist ->
-                ArtistCard(
-                    artist = artist,
-                    artworkUrl = viewModel.getArtworkUrl(artist.id),
-                    onClick = {
-                        keyboardController?.hide()
-                        viewModel.selectArtist(artist)
-                    }
-                )
-            }
-        }
-        
-        if (isAlphabetical) {
-            AlphabetSidebar(
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
-                onLetterSelect = { char ->
-                    val index = if (char == '#') {
-                        artists.indexOfFirst { !it.name.firstOrNull().let { c -> c != null && c.isLetter() } }
-                    } else {
-                        artists.indexOfFirst { it.name.firstOrNull()?.uppercaseChar() == char }
-                    }
-                    if (index != -1) {
-                        coroutineScope.launch { gridState.scrollToItem(index) }
-                    }
-                }
-            )
-        }
-    }
 }
 
 @Composable
@@ -908,121 +873,49 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
     val currentSong = viewModel.playbackState.collectAsState().value.currentSong
     val cachedSongs by viewModel.cachedSongs.collectAsState(initial = emptyList())
     val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
-    val dlMap by viewModel.downloadProgress.collectAsState()
-
+    val sortCriteria by viewModel.songsSortCriteria.collectAsState()
+    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    
     if (songs.isEmpty()) {
-        EmptyStateBlock("No songs found.")
+        EmptyStateBlock("No songs found. Refresh or adjust search.")
         return
     }
 
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val listState = rememberLazyListState()
     val scrollbarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-    val sortCriteria by viewModel.songsSortCriteria.collectAsState()
-    val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
-    val coroutineScope = rememberCoroutineScope()
-
+    
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
+            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .drawListScrollbar(listState, scrollbarColor),
-            contentPadding = PaddingValues(8.dp)
+                .drawListScrollbar(listState, scrollbarColor)
         ) {
-            itemsIndexed(songs) { idx, song ->
-                val isCurrent = song.id == currentSong?.id
+            items(songs) { song ->
+                val isPlaying = currentSong?.id == song.id
                 val isCached = cachedSongs.any { it.songId == song.id }
                 val isFav = localFavs.any { it.songId == song.id }
-                val dlProgress = dlMap[song.id]
-
-                SongItemRow(
-                    index = idx + 1,
+                TrackListItem(
                     song = song,
                     artworkUrl = viewModel.getArtworkUrl(song.id),
-                    isCurrent = isCurrent,
+                    isPlaying = isPlaying,
                     isCached = isCached,
-                    isFav = isFav,
-                    dlProgress = dlProgress,
-                    onPlay = { viewModel.playTrackInQueue(songs, idx) },
-                    onFavToggle = { viewModel.toggleFavorite(song) },
-                    onCacheClick = {
-                        if (isCached) {
-                            viewModel.deleteSongFromCache(song.id)
-                        } else {
-                            viewModel.downloadAndCacheTrack(song)
-                        }
+                    isFavorite = isFav,
+                    onClick = {
+                        keyboardController?.hide()
+                        val index = songs.indexOf(song)
+                        if (index != -1) viewModel.playTrackInQueue(songs, index)
+                    },
+                    onDownload = {
+                        viewModel.downloadAndCacheTrack(song)
                     }
                 )
             }
         }
-        
-        if (isAlphabetical) {
-            AlphabetSidebar(
-                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, top = 16.dp, bottom = 16.dp),
-                onLetterSelect = { char ->
-                    val index = if (char == '#') {
-                        songs.indexOfFirst { !it.name.firstOrNull().let { c -> c != null && c.isLetter() } }
-                    } else {
-                        songs.indexOfFirst { it.name.firstOrNull()?.uppercaseChar() == char }
-                    }
-                    if (index != -1) {
-                        coroutineScope.launch { listState.scrollToItem(index) }
-                    }
-                }
-            )
-        }
-    }
-}
-
-// --- SUB TABS COMPOSABLES FOR INDIVIDUAL TILES ---
-
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-fun AlbumCard(
-    album: JellyfinItem,
-    artworkUrl: String,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
-    ) {
-        Column {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(artworkUrl)
-                    .crossfade(true)
-                    .placeholder(android.R.drawable.ic_menu_report_image)
-                    .build(),
-                contentDescription = "${album.name} album cover",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-            )
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = album.name,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = album.albumArtist ?: "Various Artists",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+        if (isAlphabetical && listState.isScrollInProgress) {
+            AlphabetOverlay(firstVisibleItemIndex = listState.firstVisibleItemIndex, items = songs)
         }
     }
 }
@@ -2844,7 +2737,7 @@ fun EmptyStateBlock(message: String) {
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                imageVector = Icons.Default.Add,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(64.dp)
@@ -3011,4 +2904,173 @@ fun Modifier.drawGridScrollbar(
                 }
             }
         }
+}
+
+@Composable
+fun AlphabetOverlay(
+    firstVisibleItemIndex: Int,
+    items: List<com.example.data.jellyfin.JellyfinItem>
+) {
+    if (items.isNotEmpty() && firstVisibleItemIndex in items.indices) {
+        val letter = items[firstVisibleItemIndex].name.firstOrNull()?.let { if (it.isLetter()) it.uppercaseChar() else '#' } ?: '#'
+        Box(
+            modifier = Modifier
+                .padding(top = 16.dp, start = 16.dp)
+                .size(48.dp)
+                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = letter.toString(),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp
+            )
+        }
+    }
+}
+
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun AlbumCard(
+    album: com.example.data.jellyfin.JellyfinItem,
+    artworkUrl: String,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                if (artworkUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = artworkUrl,
+                        contentDescription = album.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Album,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = album.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = album.albumArtist ?: album.productionYear?.toString() ?: "Unknown",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+fun TrackListItem(
+    song: com.example.data.jellyfin.JellyfinItem,
+    artworkUrl: String,
+    isPlaying: Boolean,
+    isCached: Boolean,
+    isFavorite: Boolean,
+    onClick: () -> Unit,
+    onDownload: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (artworkUrl.isNotEmpty()) {
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = song.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    Icons.Default.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = song.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (isPlaying) FontWeight.Bold else FontWeight.Normal,
+                color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isCached) {
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = "Cached",
+                        modifier = Modifier.size(14.dp).padding(end = 4.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    text = song.artists?.joinToString() ?: "Unknown Artist",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (isFavorite) {
+            Icon(
+                Icons.Default.Favorite,
+                contentDescription = "Favorite",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+        }
+        IconButton(onClick = onDownload) {
+            Icon(Icons.Default.Download, contentDescription = "Download")
+        }
+    }
 }
