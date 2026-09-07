@@ -690,6 +690,7 @@ fun ExploreAlbumArtistsGrid(viewModel: JellyTuneViewModel) {
     val artists by viewModel.filteredAlbumArtists.collectAsState()
     val sortCriteria by viewModel.albumArtistsSortCriteria.collectAsState()
     val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    var isDragging by remember { mutableStateOf(false) }
     
     if (artists.isEmpty()) {
         EmptyStateBlock("No album artists found. Refresh or adjust search.")
@@ -709,7 +710,7 @@ fun ExploreAlbumArtistsGrid(viewModel: JellyTuneViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .drawGridScrollbar(gridState, scrollbarColor)
+                .drawGridScrollbar(gridState, scrollbarColor, onDraggingChanged = { isDragging = it })
         ) {
             items(artists) { artist ->
                 ArtistCard(
@@ -722,7 +723,7 @@ fun ExploreAlbumArtistsGrid(viewModel: JellyTuneViewModel) {
                 )
             }
         }
-        if (isAlphabetical && gridState.isScrollInProgress) {
+        if (isAlphabetical && (gridState.isScrollInProgress || isDragging)) {
             AlphabetOverlay(firstVisibleItemIndex = gridState.firstVisibleItemIndex, items = artists)
         }
     }
@@ -734,6 +735,7 @@ fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
     val artists by viewModel.filteredArtists.collectAsState()
     val sortCriteria by viewModel.artistsSortCriteria.collectAsState()
     val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    var isDragging by remember { mutableStateOf(false) }
     
     if (artists.isEmpty()) {
         EmptyStateBlock("No artists found. Refresh or adjust search.")
@@ -753,7 +755,7 @@ fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .drawGridScrollbar(gridState, scrollbarColor)
+                .drawGridScrollbar(gridState, scrollbarColor, onDraggingChanged = { isDragging = it })
         ) {
             items(artists) { artist ->
                 ArtistCard(
@@ -766,7 +768,7 @@ fun ExploreArtistsGrid(viewModel: JellyTuneViewModel) {
                 )
             }
         }
-        if (isAlphabetical && gridState.isScrollInProgress) {
+        if (isAlphabetical && (gridState.isScrollInProgress || isDragging)) {
             AlphabetOverlay(firstVisibleItemIndex = gridState.firstVisibleItemIndex, items = artists)
         }
     }
@@ -778,6 +780,7 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
     val albums by viewModel.filteredAlbums.collectAsState()
     val sortCriteria by viewModel.albumsSortCriteria.collectAsState()
     val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    var isDragging by remember { mutableStateOf(false) }
     var activeActionAlbum by remember { mutableStateOf<com.example.data.jellyfin.JellyfinItem?>(null) }
     
     if (albums.isEmpty()) {
@@ -808,7 +811,7 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .drawGridScrollbar(gridState, scrollbarColor)
+                .drawGridScrollbar(gridState, scrollbarColor, onDraggingChanged = { isDragging = it })
         ) {
             items(albums) { album ->
                 AlbumCard(
@@ -822,7 +825,7 @@ fun ExploreAlbumsGrid(viewModel: JellyTuneViewModel) {
                 )
             }
         }
-        if (isAlphabetical && gridState.isScrollInProgress) {
+        if (isAlphabetical && (gridState.isScrollInProgress || isDragging)) {
             AlphabetOverlay(firstVisibleItemIndex = gridState.firstVisibleItemIndex, items = albums)
         }
     }
@@ -878,6 +881,7 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
     val localFavs by viewModel.localFavorites.collectAsState(initial = emptyList())
     val sortCriteria by viewModel.songsSortCriteria.collectAsState()
     val isAlphabetical = sortCriteria == SortCriteria.ALPHABETICAL
+    var isDragging by remember { mutableStateOf(false) }
     
     if (songs.isEmpty()) {
         EmptyStateBlock("No songs found. Refresh or adjust search.")
@@ -894,7 +898,7 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
             contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
             modifier = Modifier
                 .fillMaxSize()
-                .drawListScrollbar(listState, scrollbarColor)
+                .drawListScrollbar(listState, scrollbarColor, onDraggingChanged = { isDragging = it })
         ) {
             items(songs) { song ->
                 val isPlaying = currentSong?.id == song.id
@@ -918,7 +922,7 @@ fun ExploreSongsList(viewModel: JellyTuneViewModel) {
                 )
             }
         }
-        if (isAlphabetical && listState.isScrollInProgress) {
+        if (isAlphabetical && (listState.isScrollInProgress || isDragging)) {
             AlphabetOverlay(firstVisibleItemIndex = listState.firstVisibleItemIndex, items = songs)
         }
     }
@@ -2789,7 +2793,8 @@ fun getAvailableStorageMb(context: android.content.Context): Long {
 
 fun Modifier.drawListScrollbar(
     state: LazyListState,
-    color: Color
+    color: Color,
+    onDraggingChanged: ((Boolean) -> Unit)? = null
 ): Modifier = this.composed {
     val coroutineScope = rememberCoroutineScope()
     var isDragging by remember { mutableStateOf(false) }
@@ -2831,6 +2836,7 @@ fun Modifier.drawListScrollbar(
                     if (down != null && !isDragging) {
                         if (down.position.x >= size.width - 48.dp.toPx()) {
                             isDragging = true
+                            onDraggingChanged?.invoke(true)
                             down.consume()
                         }
                     }
@@ -2851,6 +2857,7 @@ fun Modifier.drawListScrollbar(
                         }
                         if (event.changes.all { !it.pressed }) {
                             isDragging = false
+                            onDraggingChanged?.invoke(false)
                         }
                     }
                 }
@@ -2860,7 +2867,8 @@ fun Modifier.drawListScrollbar(
 
 fun Modifier.drawGridScrollbar(
     state: LazyGridState,
-    color: Color
+    color: Color,
+    onDraggingChanged: ((Boolean) -> Unit)? = null
 ): Modifier = this.composed {
     val coroutineScope = rememberCoroutineScope()
     var isDragging by remember { mutableStateOf(false) }
@@ -2902,6 +2910,7 @@ fun Modifier.drawGridScrollbar(
                     if (down != null && !isDragging) {
                         if (down.position.x >= size.width - 48.dp.toPx()) {
                             isDragging = true
+                            onDraggingChanged?.invoke(true)
                             down.consume()
                         }
                     }
@@ -2922,6 +2931,7 @@ fun Modifier.drawGridScrollbar(
                         }
                         if (event.changes.all { !it.pressed }) {
                             isDragging = false
+                            onDraggingChanged?.invoke(false)
                         }
                     }
                 }

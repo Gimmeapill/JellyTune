@@ -1,13 +1,8 @@
 import re
 
 file_path = '/app/applet/app/build.gradle.kts'
-try:
-    with open(file_path, 'r') as f:
-        content = f.read()
-except FileNotFoundError:
-    file_path = '/app/build.gradle.kts'
-    with open(file_path, 'r') as f:
-        content = f.read()
+with open(file_path, 'r') as f:
+    content = f.read()
 
 def replace_version_code(match):
     current = int(match.group(1))
@@ -22,5 +17,3 @@ content = re.sub(r'versionName\s*=\s*"([\d\.]+)"', replace_version_name, content
 
 with open(file_path, 'w') as f:
     f.write(content)
-
-print(f"Updated {file_path}")

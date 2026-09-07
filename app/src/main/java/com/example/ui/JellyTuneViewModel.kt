@@ -864,6 +864,29 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
     fun toggleFavorite(song: JellyfinItem) {
         viewModelScope.launch {
             repository.toggleFavorite(song)
+            val newIsFav = repository.isFavorite(song.id)
+            val updateItem = { i: com.example.data.jellyfin.JellyfinItem ->
+                if (i.id == song.id) {
+                    i.copy(userData = i.userData?.copy(isFavorite = newIsFav) ?: com.example.data.jellyfin.UserData(isFavorite = newIsFav))
+                } else i
+            }
+            _albums.value = _albums.value.map(updateItem)
+            _artists.value = _artists.value.map(updateItem)
+            _songs.value = _songs.value.map(updateItem)
+            
+            _selectedArtist.value?.let {
+                if (it.id == song.id) _selectedArtist.value = updateItem(it)
+            }
+            _selectedAlbum.value?.let {
+                if (it.id == song.id) _selectedAlbum.value = updateItem(it)
+            }
+            
+            _selectedArtist.value?.let {
+                if (it.id == song.id) _selectedArtist.value = updateItem(it)
+            }
+            _selectedAlbum.value?.let {
+                if (it.id == song.id) _selectedAlbum.value = updateItem(it)
+            }
         }
     }
 
@@ -875,7 +898,24 @@ class JellyTuneViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun toggleFavoriteFav(song: LocalFavorite) {
         viewModelScope.launch {
-            repository.toggleFavorite(song.toJellyfinItem())
+            val item = song.toJellyfinItem()
+            repository.toggleFavorite(item)
+            val newIsFav = repository.isFavorite(item.id)
+            val updateItem = { i: com.example.data.jellyfin.JellyfinItem ->
+                if (i.id == item.id) {
+                    i.copy(userData = i.userData?.copy(isFavorite = newIsFav) ?: com.example.data.jellyfin.UserData(isFavorite = newIsFav))
+                } else i
+            }
+            _albums.value = _albums.value.map(updateItem)
+            _artists.value = _artists.value.map(updateItem)
+            _songs.value = _songs.value.map(updateItem)
+            
+            _selectedArtist.value?.let {
+                if (it.id == item.id) _selectedArtist.value = updateItem(it)
+            }
+            _selectedAlbum.value?.let {
+                if (it.id == item.id) _selectedAlbum.value = updateItem(it)
+            }
         }
     }
 

@@ -523,6 +523,10 @@ class JellyfinRepository(private val context: Context) {
         favoriteDao.isFavorite(songId)
     }
 
+
+    suspend fun isFavoriteLocally(songId: String): Boolean = withContext(Dispatchers.IO) {
+        favoriteDao.isFavorite(songId)
+    }
     suspend fun toggleFavorite(song: JellyfinItem) = withContext(Dispatchers.IO) {
         val server = _activeServer.value ?: return@withContext
         val isFav = favoriteDao.isFavorite(song.id)
@@ -541,6 +545,8 @@ class JellyfinRepository(private val context: Context) {
             )
             favoriteDao.insertFavorite(fav)
         }
+        
+
 
         // Sync favorite with server if we're not in demo mode
         if (!isDemo()) {
