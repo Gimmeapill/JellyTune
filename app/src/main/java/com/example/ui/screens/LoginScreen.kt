@@ -232,7 +232,7 @@ fun LoginScreen(
                     Button(
                         onClick = {
                             if (serverUrl.isNotBlank() && username.isNotBlank()) {
-                                viewModel.connectServer(serverUrl, username, password)
+                                viewModel.connectServer(serverUrl.trim(), username.trim(), password)
                             }
                         },
                         enabled = !isLoading && serverUrl.isNotBlank() && username.isNotBlank(),

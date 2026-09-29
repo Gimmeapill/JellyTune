@@ -73,6 +73,14 @@ class JellyfinRepository(private val context: Context) {
     private val repositoryScope = kotlinx.coroutines.CoroutineScope(Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
 
     init {
+        // Restore or initialize persistent deviceId
+        val savedDeviceId = prefs.getString("jellyfin_device_id", null) ?: run {
+            val newId = client.deviceId
+            prefs.edit().putString("jellyfin_device_id", newId).apply()
+            newId
+        }
+        client.deviceId = savedDeviceId
+
         // Run auto-login from the active server in Room
         kotlinx.coroutines.MainScope().launch {
             try {
@@ -81,6 +89,9 @@ class JellyfinRepository(private val context: Context) {
                 }
                 _activeServer.value = active
                 if (active != null) {
+                    if (active.deviceId.isNotBlank()) {
+                        client.deviceId = active.deviceId
+                    }
                     // Pre-populate libraries from shared preferences
                     val libsJson = prefs.getString("discovered_libs_${active.serverUrl}_${active.userId}", null)
                     if (libsJson != null) {

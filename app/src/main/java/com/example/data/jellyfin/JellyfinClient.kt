@@ -25,15 +25,21 @@ class JellyfinClient {
 
     private val itemJsonAdapter = moshi.adapter(JellyfinItemsResponse::class.java)
     private val authResponseAdapter = moshi.adapter(AuthResponse::class.java)
+    private val authRequestAdapter = moshi.adapter(AuthRequest::class.java)
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    // Create a device ID
-    val deviceId = "jellytune-android-${UUID.randomUUID().toString().take(8)}"
+    // Device ID used to identify client session
+    var deviceId: String = "jellytune-android-${UUID.randomUUID().toString().take(8)}"
 
-    // X-Emby-Authorization header used for authenticating with Jellyfin
-    private fun getAuthHeaderValue(username: String): String {
-        return "MediaBrowser Client=\"JellyTune\", Device=\"Android Mobile\", DeviceId=\"$deviceId\", Version=\"1.0.0\", User=\"$username\""
+    // Standard MediaBrowser authorization header for Jellyfin & Emby
+    fun getAuthHeaderValue(token: String? = null): String {
+        return buildString {
+            append("MediaBrowser Client=\"JellyTune\", Device=\"Android Mobile\", DeviceId=\"$deviceId\", Version=\"1.0.0\"")
+            if (!token.isNullOrBlank()) {
+                append(", Token=\"$token\"")
+            }
+        }
     }
 
     suspend fun authenticate(
@@ -44,24 +50,24 @@ class JellyfinClient {
         val sanitizedUrl = sanitizeUrl(serverUrl)
         val loginUrl = "$sanitizedUrl/Users/AuthenticateByName"
 
-        val jsonBody = """
-            {
-                "Username": "$username",
-                "Pw": "$password"
-            }
-        """.trimIndent()
+        val jsonBody = authRequestAdapter.toJson(AuthRequest(username = username.trim(), pw = password))
+        val authHeader = getAuthHeaderValue()
 
         val request = Request.Builder()
             .url(loginUrl)
             .post(jsonBody.toRequestBody(jsonMediaType))
-            .addHeader("X-Emby-Authorization", getAuthHeaderValue(username))
+            .addHeader("Authorization", authHeader)
+            .addHeader("X-Emby-Authorization", authHeader)
+            .addHeader("User-Agent", "JellyTune/1.0 (Android)")
             .addHeader("Accept", "application/json")
             .build()
 
         try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(IOException("Server error: ${response.code} ${response.message}"))
+                    val rawBody = response.body?.string()?.trim()?.take(500) ?: ""
+                    val detail = if (rawBody.isNotBlank()) ": $rawBody" else ""
+                    return@withContext Result.failure(IOException("Server error ${response.code} (${response.message})$detail"))
                 }
                 val bodyString = response.body?.string()
                     ?: return@withContext Result.failure(IOException("Empty response body"))
@@ -112,12 +118,15 @@ class JellyfinClient {
             else -> ""
         }
 
+        val authHeader = getAuthHeaderValue(token)
         val request = Request.Builder()
             .url(queryUrl)
             .get()
+            .addHeader("Authorization", authHeader)
+            .addHeader("X-Emby-Authorization", authHeader)
             .addHeader("X-MediaBrowser-Token", token)
             .addHeader("X-Emby-Token", token)
-            .addHeader("Authorization", "MediaBrowser Token=\"$token\"")
+            .addHeader("User-Agent", "JellyTune/1.0 (Android)")
             .addHeader("Accept", "application/json")
             .build()
 
@@ -159,12 +168,15 @@ class JellyfinClient {
         val sanitizedUrl = sanitizeUrl(serverUrl)
         val url = "$sanitizedUrl/Users/$userId/FavoriteItems/$itemId"
         val body = if (isFavorite) "{}".toRequestBody(jsonMediaType) else null
+        val authHeader = getAuthHeaderValue(token)
         val request = Request.Builder()
             .url(url)
             .method(if (isFavorite) "POST" else "DELETE", body)
+            .addHeader("Authorization", authHeader)
+            .addHeader("X-Emby-Authorization", authHeader)
             .addHeader("X-MediaBrowser-Token", token)
             .addHeader("X-Emby-Token", token)
-            .addHeader("Authorization", "MediaBrowser Token=\"$token\"")
+            .addHeader("User-Agent", "JellyTune/1.0 (Android)")
             .addHeader("Accept", "application/json")
             .build()
         try {
@@ -188,12 +200,15 @@ class JellyfinClient {
         val sanitizedUrl = sanitizeUrl(serverUrl)
         val queryUrl = "$sanitizedUrl/Users/$userId/Views"
 
+        val authHeader = getAuthHeaderValue(token)
         val request = Request.Builder()
             .url(queryUrl)
             .get()
+            .addHeader("Authorization", authHeader)
+            .addHeader("X-Emby-Authorization", authHeader)
             .addHeader("X-MediaBrowser-Token", token)
             .addHeader("X-Emby-Token", token)
-            .addHeader("Authorization", "MediaBrowser Token=\"$token\"")
+            .addHeader("User-Agent", "JellyTune/1.0 (Android)")
             .addHeader("Accept", "application/json")
             .build()
 
@@ -215,10 +230,19 @@ class JellyfinClient {
         }
     }
 
-    private fun sanitizeUrl(url: String): String {
+    fun sanitizeUrl(url: String): String {
         var cleanUrl = url.trim()
-        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+        if (!cleanUrl.startsWith("http://", ignoreCase = true) && !cleanUrl.startsWith("https://", ignoreCase = true)) {
             cleanUrl = "http://$cleanUrl"
+        }
+        while (cleanUrl.endsWith("/")) {
+            cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1)
+        }
+        // Remove web client path suffix if user copied URL from browser address bar
+        if (cleanUrl.endsWith("/web/index.html", ignoreCase = true)) {
+            cleanUrl = cleanUrl.substring(0, cleanUrl.length - "/web/index.html".length)
+        } else if (cleanUrl.endsWith("/web", ignoreCase = true)) {
+            cleanUrl = cleanUrl.substring(0, cleanUrl.length - "/web".length)
         }
         while (cleanUrl.endsWith("/")) {
             cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1)
